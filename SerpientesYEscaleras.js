@@ -1,63 +1,72 @@
-/**
- * @class SerpientesYEscaleras
- * Maneja el estado y la lógica para una partida de Serpientes y Escaleras.
- */
 class SerpientesYEscaleras {
-    /**
-     * @param {string[]} playerIds Un array con los IDs de los jugadores (2 a 4).
-     */
     constructor(playerIds) {
-        // CAMBIO: Ahora validamos que haya entre 2 y 4 jugadores.
         if (playerIds.length < 2 || playerIds.length > 4) {
             throw new Error("El juego debe tener entre 2 y 4 jugadores.");
         }
-        
-        // El resto del constructor queda exactamente igual...
+
         this.boardSize = 100;
-        this.snakesAndLadders = {
-            // ...
-        };
+        // ¡NUEVO! Generamos el tablero al azar al crear la partida
+        this.snakesAndLadders = this._generateRandomBoard(this.boardSize, 7, 7); // 7 serpientes y 7 escaleras
 
         this.playerIds = playerIds;
         this.positions = {};
-        // INICIO: Inicializamos la posición de cada jugador en 1.
         playerIds.forEach(id => {
             this.positions[id] = 1;
         });
-        // FIN: El resto sigue igual.
         this.currentPlayerIndex = 0;
         this.winner = null;
         this.lastRoll = null;
     }
 
-    /**
-     * Simula el lanzamiento de un dado de 6 caras.
-     * @returns {number} Un número entre 1 y 6.
-     */
+    // --- NUEVA FUNCIÓN PARA GENERAR EL TABLERO ---
+    _generateRandomBoard(size, numSnakes, numLadders) {
+        const board = {};
+        const usedSquares = new Set([1, size]); // No se puede empezar o terminar en 1 o 100
+
+        for (let i = 0; i < numLadders; i++) {
+            let start, end;
+            do {
+                start = Math.floor(Math.random() * (size - 10)) + 2; // Escaleras no empiezan muy arriba
+                end = start + Math.floor(Math.random() * 20) + 10; // Deben subir al menos 10 casillas
+            } while (usedSquares.has(start) || usedSquares.has(end) || end >= size);
+            
+            board[start] = end;
+            usedSquares.add(start);
+            usedSquares.add(end);
+        }
+
+        for (let i = 0; i < numSnakes; i++) {
+            let start, end;
+            do {
+                start = Math.floor(Math.random() * (size - 10)) + 10; // Serpientes no empiezan muy abajo
+                end = start - (Math.floor(Math.random() * 20) + 10); // Deben bajar al menos 10 casillas
+            } while (usedSquares.has(start) || usedSquares.has(end) || end <= 1);
+
+            board[start] = end;
+            usedSquares.add(start);
+            usedSquares.add(end);
+        }
+
+        return board;
+    }
+    
     _rollDice() {
         return Math.floor(Math.random() * 6) + 1;
     }
 
-    /**
-     * Realiza el turno de un jugador.
-     * @param {string} playerId El ID del jugador que realiza el movimiento.
-     * @returns {object} El estado actualizado del juego.
-     */
     playTurn(playerId) {
+        // ... (el resto de esta función no cambia)
         if (this.winner) throw new Error("El juego ya ha terminado.");
         if (playerId !== this.playerIds[this.currentPlayerIndex]) throw new Error("No es el turno de este jugador.");
-
         const roll = this._rollDice();
         this.lastRoll = roll;
         let newPosition = this.positions[playerId] + roll;
-
         if (newPosition <= this.boardSize) {
             if (this.snakesAndLadders[newPosition]) {
                 newPosition = this.snakesAndLadders[newPosition];
             }
             this.positions[playerId] = newPosition;
         }
-
         if (this.positions[playerId] === this.boardSize) {
             this.winner = playerId;
         } else {
@@ -66,24 +75,20 @@ class SerpientesYEscaleras {
         return this.getGameState();
     }
 
-    /**
-     * Devuelve el estado actual del juego.
-     * @returns {object} Un objeto con el estado completo de la partida.
-     */
     getGameState() {
         return {
-            playerIds: this.playerIds, // <-- AÑADE ESTA LÍNEA
+            playerIds: this.playerIds,
             positions: this.positions,
             currentPlayerId: this.playerIds[this.currentPlayerIndex],
             winner: this.winner,
             lastRoll: this.lastRoll,
+            // ¡NUEVO! Enviamos la configuración del tablero al frontend
             board: {
                 size: this.boardSize,
-                specialTiles: this.snakesAndLadders
+                snakesAndLadders: this.snakesAndLadders
             }
         };
     }
 }
 
-// Exportamos la clase para poder usarla en otros archivos.
 module.exports = SerpientesYEscaleras;
