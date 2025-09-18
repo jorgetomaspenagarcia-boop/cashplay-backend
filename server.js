@@ -1,3 +1,5 @@
+const jwt = require('jsonwebtoken'); // <-- Añade esta importación al principio
+
 // --- Importaciones y Configuración (sin cambios) ---
 const express = require('express');
 const http = require('http');
@@ -73,22 +75,39 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' });
         }
 
-        // 1. Buscamos al usuario en la base de datos por su email
+        // 1. Buscamos al usuario en la base de datos (sin cambios)
         const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
         if (users.length === 0) {
             return res.status(404).json({ message: 'El usuario no existe.' });
         }
         const user = users[0];
 
-        // 2. Comparamos la contraseña introducida con la guardada en la BD
+        // 2. Comparamos la contraseña con la guardada (sin cambios)
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
         if (!isPasswordCorrect) {
-            return res.status(401).json({ message: 'Contraseña incorrecta.' }); // 401 Unauthorized
+            return res.status(401).json({ message: 'Contraseña incorrecta.' });
         }
 
-        // 3. ¡Inicio de sesión exitoso!
-        // En el futuro, aquí es donde generaríamos un "token" de sesión.
-        res.status(200).json({ message: 'Inicio de sesión exitoso.' });
+        // --- INICIO DE LA LÓGICA DE JWT ---
+
+        // 3. Preparamos los datos que irán dentro del token (el "payload")
+        // NUNCA incluyas la contraseña aquí.
+        const payload = {
+            id: user.id,
+            email: user.email
+        };
+
+        // 4. Firmamos el token usando el secreto que guardaste en Render
+        // El token expirará en 1 día, forzando al usuario a iniciar sesión de nuevo.
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+
+        // 5. Enviamos el token al cliente junto con el mensaje de éxito
+        res.status(200).json({ 
+            message: 'Inicio de sesión exitoso.',
+            token: token 
+        });
+
+        // --- FIN DE LA LÓGICA DE JWT ---
 
     } catch (error) {
         console.error('Error en el inicio de sesión:', error);
@@ -179,6 +198,7 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 
 });
+
 
 
 
