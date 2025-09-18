@@ -1,3 +1,7 @@
+console.log('--- VERIFICANDO VARIABLES DE ENTORNO ---');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Cargado ✅' : 'NO ENCONTRADO O VACÍO ❌');
+console.log('--- FIN DE VERIFICACIÓN ---');
+
 // --- 1. IMPORTACIONES ---
 const express = require('express');
 const http = require('http');
@@ -289,6 +293,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
