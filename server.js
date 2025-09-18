@@ -124,6 +124,54 @@ app.post('/api/create-payment-intent', authenticateToken, async (req, res) => {
     }
 });
 
+¡Excelente! Ahora que tu backend está listo para hablar con Stripe, construiremos el formulario de pago en el frontend. Este es el paso final para permitir que los usuarios depositen fondos.
+
+El proceso es muy seguro: tu frontend hablará con tu backend para iniciar el pago, luego usará una herramienta especial de Stripe para manejar los datos de la tarjeta (estos datos nunca tocarán tu servidor), y finalmente, tras la confirmación de Stripe, le notificaremos a nuestro backend que actualice el saldo.
+
+Un Pequeño Añadido al Backend: Confirmar el Depósito
+Necesitamos un nuevo endpoint que el frontend pueda llamar después de que Stripe confirme que el pago fue exitoso. Este endpoint actualizará el saldo del usuario en nuestra base de datos.
+
+Añade esta nueva ruta a tu server.js:
+
+JavaScript
+
+// En server.js, junto a las otras rutas de la API
+
+app.post('/api/update-balance-after-payment', authenticateToken, async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const userId = req.user.id;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ error: 'Monto inválido.' });
+        }
+
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            // 1. Actualizamos el saldo del usuario
+            await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [amount, userId]);
+            // 2. Registramos la transacción
+            await connection.query('INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)', [userId, 'deposit', amount]);
+            await connection.commit();
+            
+            // 3. Obtenemos y devolvemos el nuevo saldo
+            const [[user]] = await connection.query('SELECT balance FROM users WHERE id = ?', [userId]);
+            res.status(200).json({ newBalance: user.balance });
+
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+
+    } catch (error) {
+        console.error("Error al actualizar el saldo:", error);
+        res.status(500).json({ error: 'Error al actualizar el saldo.' });
+    }
+});
+
 // --- 6. LÓGICA DE WEBSOCKETS PARA EL JUEGO ---
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -253,4 +301,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
