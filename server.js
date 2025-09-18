@@ -132,7 +132,7 @@ io.on('connection', (socket) => {
         
         // Tomamos los primeros 4 jugadores de la cola
         const players = waitingQueue.splice(0, PLAYERS_PER_GAME);
-        const playerIds = players.map(p => p.id);
+        const playerIds = players.map(p => p.user.id); // Usa el ID permanente del usuario de la base de datos
         
         const gameId = `${playerIds[0]}-${Date.now()}`; // Creamos un ID único
         
@@ -196,8 +196,9 @@ io.on('connection', (socket) => {
 // --- Iniciar el Servidor ---
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
-
+    console.log(`Partida ${gameId} iniciada con los usuarios: ${players.map(p => p.user.email).join(', ')}.`);
 });
+
 
 
 
