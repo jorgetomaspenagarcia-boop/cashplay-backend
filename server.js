@@ -3,8 +3,11 @@ const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
 const SerpientesYEscaleras = require('./SerpientesYEscaleras.js'); 
+const bcrypt = require('bcrypt');
+const db = require('./db.js');
 
 const app = express();
+app.use(express.json()); // <-- AÑADE ESTA LÍNEA
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
@@ -105,4 +108,5 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 
 });
+
 
