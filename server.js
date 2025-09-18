@@ -1,67 +1,58 @@
-const jwt = require('jsonwebtoken'); // <-- Añade esta importación al principio
-
-// --- Importaciones y Configuración (sin cambios) ---
+// --- 1. IMPORTACIONES ---
 const express = require('express');
 const http = require('http');
-const cors = require('cors'); // <-- AÑADE ESTA LÍNEA
+const cors = require('cors');
 const { Server } = require("socket.io");
-const SerpientesYEscaleras = require('./SerpientesYEscaleras.js'); 
+const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const db = require('./db.js');
+const SerpientesYEscaleras = require('./SerpientesYEscaleras.js');
 
+// --- 2. CONFIGURACIÓN INICIAL DE EXPRESS Y SOCKET.IO ---
 const app = express();
-app.use(express.json()); // <-- AÑADE ESTA LÍNEA
-
-// --- CONFIGURACIÓN DE CORS PARA EXPRESS ---
-app.use(cors({
-    origin: 'https://cashplay.space' // Permite peticiones solo desde tu dominio
-}));
-// -----------------------------------------
+app.use(express.json());
+app.use(cors({ origin: 'https://cashplay.space' }));
 
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-      origin: "https://cashplay.space",
-      methods: ["GET", "POST"]
+        origin: "https://cashplay.space",
+        methods: ["GET", "POST"]
     }
 });
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3000;
 
-// --- NUEVO: Servir archivos estáticos ---
-// ---
-
+// --- 3. VARIABLES GLOBALES DEL JUEGO ---
 const activeGames = {};
-// CAMBIO: Usamos un array como cola de espera en lugar de una sola variable
-let waitingQueue = []; 
+let waitingQueue = [];
 const PLAYERS_PER_GAME = 4;
-const BET_AMOUNT = 5.00; // Cada jugador apostará $1.00
+const BET_AMOUNT = 1.00; 
 
+// --- 4. MIDDLEWARE DE AUTENTICACIÓN PARA LA API ---
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Formato: "Bearer TOKEN"
+
+    if (token == null) return res.sendStatus(401);
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+}
+
+// --- 5. RUTAS DE LA API ---
 app.post('/api/register', async (req, res) => {
     try {
-        // 1. Obtenemos el email y la contraseña del cuerpo de la petición
         const { email, password } = req.body;
-
-        // 2. Verificamos que no falten datos
-        if (!email || !password) {
-            return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' });
-        }
-
-        // 3. Revisamos si el email ya existe en la base de datos
+        if (!email || !password) { return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' }); }
         const [existingUsers] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-        if (existingUsers.length > 0) {
-            return res.status(409).json({ message: 'Este correo electrónico ya está registrado.' }); // 409 Conflict
-        }
-
-        // 4. Encriptamos la contraseña (¡nunca guardarla como texto plano!)
+        if (existingUsers.length > 0) { return res.status(409).json({ message: 'Este correo electrónico ya está registrado.' }); }
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-        // 5. Insertamos el nuevo usuario en la base de datos
         await db.query('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword]);
-        
-        // 6. Enviamos una respuesta de éxito
-        res.status(201).json({ message: 'Usuario registrado exitosamente.' }); // 201 Created
-
+        res.status(201).json({ message: 'Usuario registrado exitosamente.' });
     } catch (error) {
         console.error('Error en el registro de usuario:', error);
         res.status(500).json({ message: 'Error interno del servidor.' });
@@ -71,113 +62,80 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' });
-        }
-
-        // 1. Buscamos al usuario en la base de datos (sin cambios)
+        if (!email || !password) { return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' }); }
         const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
-        if (users.length === 0) {
-            return res.status(404).json({ message: 'El usuario no existe.' });
-        }
+        if (users.length === 0) { return res.status(404).json({ message: 'El usuario no existe.' }); }
         const user = users[0];
-
-        // 2. Comparamos la contraseña con la guardada (sin cambios)
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
-        if (!isPasswordCorrect) {
-            return res.status(401).json({ message: 'Contraseña incorrecta.' });
-        }
-
-        // --- INICIO DE LA LÓGICA DE JWT ---
-
-        // 3. Preparamos los datos que irán dentro del token (el "payload")
-        // NUNCA incluyas la contraseña aquí.
-        const payload = {
-            id: user.id,
-            email: user.email
-        };
-
-        // 4. Firmamos el token usando el secreto que guardaste en Render
-        // El token expirará en 1 día, forzando al usuario a iniciar sesión de nuevo.
+        if (!isPasswordCorrect) { return res.status(401).json({ message: 'Contraseña incorrecta.' }); }
+        const payload = { id: user.id, email: user.email };
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
-
-        // 5. Enviamos el token al cliente junto con el mensaje de éxito
-        res.status(200).json({ 
+        res.status(200).json({
             message: 'Inicio de sesión exitoso.',
             token: token,
-            user: {
-                id: user.id,
-                email: user.email,
-                balance: user.balance
-            }
+            user: { id: user.id, email: user.email, balance: user.balance }
         });
-
-        // --- FIN DE LA LÓGICA DE JWT ---
-
     } catch (error) {
         console.error('Error en el inicio de sesión:', error);
         res.status(500).json({ message: 'Error interno del servidor.' });
     }
 });
 
-// --- Lógica de Conexión ---
+app.get('/api/user/history', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [games] = await db.query('SELECT * FROM games WHERE id IN (SELECT game_id FROM transactions WHERE user_id = ?) ORDER BY created_at DESC LIMIT 10', [userId]);
+        const [transactions] = await db.query('SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10', [userId]);
+        res.status(200).json({ games, transactions });
+    } catch (error) {
+        console.error('Error al obtener el historial del usuario:', error);
+        res.status(500).json({ message: 'Error interno del servidor.' });
+    }
+});
+
+// --- 6. LÓGICA DE WEBSOCKETS PARA EL JUEGO ---
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) { return next(new Error('Autenticación fallida: No se proporcionó token.')); }
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+        if (err) { return next(new Error('Autenticación fallida: Token inválido.')); }
+        socket.user = user;
+        next();
+    });
+});
+
 io.on('connection', (socket) => {
-    console.log(`✅ Jugador conectado: ${socket.id}`);
-
-    // --- Lógica de Matchmaking para 4 jugadores ---
+    console.log(`✅ Jugador autenticado y conectado: ${socket.user.email} (${socket.id})`);
     waitingQueue.push(socket);
-    console.log(`Jugadores en cola: ${waitingQueue.length}`);
-
-    // Avisamos al jugador que está en la cola de espera
     socket.emit('waitingInQueue', { playersInQueue: waitingQueue.length, requiredPlayers: PLAYERS_PER_GAME });
 
-    // Si tenemos suficientes jugadores en la cola, intentamos iniciar una partida
     if (waitingQueue.length >= PLAYERS_PER_GAME) {
-        console.log('Cola llena. Verificando saldos para iniciar partida...');
         const players = waitingQueue.splice(0, PLAYERS_PER_GAME);
-        
-        // Usamos una función asíncrona para manejar la lógica de la base de datos
         (async () => {
-            const connection = await db.getConnection(); // Obtenemos una conexión del pool
+            const connection = await db.getConnection();
             try {
-                // Iniciamos una transacción: o todo funciona, o no se hace nada.
                 await connection.beginTransaction();
-
-                // 1. Verificamos los saldos de todos los jugadores
                 const playerIds = players.map(p => p.user.id);
                 const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
-
-                // Comprobamos que todos los jugadores encontrados tengan saldo suficiente
                 const hasEnoughBalance = users.length === PLAYERS_PER_GAME && users.every(u => u.balance >= BET_AMOUNT);
 
                 if (!hasEnoughBalance) {
-                    // Si alguien no tiene saldo, cancelamos la partida
                     console.log('Un jugador no tiene saldo suficiente. Cancelando partida.');
-                    players.forEach(p => p.socket.emit('gameCancelled', { message: 'No todos los jugadores tienen saldo suficiente.' }));
-                    // Devolvemos los jugadores al principio de la cola
+                    players.forEach(p => p.emit('gameCancelled', { message: 'No todos los jugadores tienen saldo suficiente.' }));
                     waitingQueue.unshift(...players);
-                    await connection.rollback(); // Revertimos la transacción
-                    return; // Salimos de la función
+                    await connection.rollback();
+                    return;
                 }
 
-                // 2. Si todos tienen saldo, les cobramos la apuesta
                 const potAmount = BET_AMOUNT * PLAYERS_PER_GAME;
                 for (const user of users) {
-                    // Descontamos el saldo
                     await connection.query('UPDATE users SET balance = balance - ? WHERE id = ?', [BET_AMOUNT, user.id]);
-                    // Creamos un registro de la transacción
                     await connection.query('INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)', [user.id, 'bet', -BET_AMOUNT]);
                 }
-
-                // Si todo fue bien, confirmamos los cambios en la base de datos
                 await connection.commit();
 
-                // 3. Ahora sí, iniciamos el juego
                 const gameId = `${playerIds[0]}-${Date.now()}`;
                 const game = new SerpientesYEscaleras(playerIds);
-                
-                // Guardamos el pozo en la instancia del juego para usarlo al final
                 game.potAmount = potAmount;
                 activeGames[gameId] = game;
 
@@ -187,110 +145,80 @@ io.on('connection', (socket) => {
                 });
                 
                 io.to(gameId).emit('gameStart', game.getGameState());
-                console.log(`Partida ${gameId} iniciada.`);
-
+                console.log(`Partida ${gameId} iniciada con los usuarios: ${players.map(p => p.user.email).join(', ')}.`);
             } catch (error) {
-                await connection.rollback(); // Si algo falla, revertimos todo
+                await connection.rollback();
                 console.error('Error al iniciar la partida:', error);
-                // Devolvemos los jugadores a la cola si hay un error
                 waitingQueue.unshift(...players);
             } finally {
-                connection.release(); // Liberamos la conexión para que otros la usen
+                connection.release();
             }
         })();
     }
 
-    // Evento para lanzar el dado (sin cambios en su lógica interna)
     socket.on('lanzarDado', () => {
         const gameId = socket.currentGameId;
         if (!gameId || !activeGames[gameId]) return;
 
         const game = activeGames[gameId];
         try {
-            const newState = game.playTurn(socket.id);
+            // CORRECCIÓN: Usar el ID de usuario de la base de datos
+            const newState = game.playTurn(socket.user.id);
             io.to(gameId).emit('gameStateUpdate', newState);
-             if (newState.winner) {
-                    const winnerId = newState.winner;
-                    const potAmount = game.potAmount;
-                    const prize = potAmount * 0.90;
-                    const fee = potAmount * 0.10;
-                    
-                    // Usamos una función asíncrona para el pago
-                    (async () => {
-                        const connection = await db.getConnection();
-                        try {
-                            await connection.beginTransaction();
-
-                            // Pagamos el premio al ganador
-                            await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
-                            
-                            // Registramos la partida en el historial
-                            const [result] = await connection.query('INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)', [winnerId, potAmount, fee]);
-                            const newGameId = result.insertId;
-
-                            // Registramos la transacción del ganador
-                            await connection.query('INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)', [winnerId, 'win', prize, newGameId]);
-
-                            await connection.commit();
-
-                            // Obtenemos el nuevo saldo del ganador para mostrarlo en el frontend
-                            const [[winnerData]] = await connection.query('SELECT balance FROM users WHERE id = ?', [winnerId]);
-
-                            // Anunciamos el fin del juego y enviamos el nuevo saldo
-                            io.to(gameId).emit('gameOver', { ...newState, newBalance: winnerData.balance });
-                            
-                        } catch (error) {
-                            await connection.rollback();
-                            console.error("Error al procesar el fin de la partida:", error);
-                        } finally {
-                            connection.release();
-                        }
-                    })();
-                    
-                    delete activeGames[gameId];
-                }
+            
+            if (newState.winner) {
+                const winnerId = newState.winner;
+                const potAmount = game.potAmount;
+                const prize = potAmount * 0.90;
+                const fee = potAmount * 0.10;
+                
+                (async () => {
+                    const connection = await db.getConnection();
+                    try {
+                        await connection.beginTransaction();
+                        await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
+                        const [result] = await connection.query('INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)', [winnerId, potAmount, fee]);
+                        const newGameId = result.insertId;
+                        await connection.query('INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)', [winnerId, 'win', prize, newGameId]);
+                        await connection.commit();
+                        const [[winnerData]] = await connection.query('SELECT balance FROM users WHERE id = ?', [winnerId]);
+                        io.to(gameId).emit('gameOver', { ...newState, newBalance: winnerData.balance });
+                    } catch (error) {
+                        await connection.rollback();
+                        console.error("Error al procesar el fin de la partida:", error);
+                    } finally {
+                        connection.release();
+                    }
+                })();
+                delete activeGames[gameId];
+            }
         } catch (error) {
             socket.emit('errorJuego', { message: error.message });
         }
     });
 
-    // Lógica de Desconexión (actualizada para la cola)
     socket.on('disconnect', () => {
-        console.log(`❌ Jugador desconectado: ${socket.id}`);
-        
-        // Lo quitamos de la cola de espera si estaba ahí
+        console.log(`❌ Jugador desconectado: ${socket.user.email}`);
         waitingQueue = waitingQueue.filter(player => player.id !== socket.id);
-        console.log(`Jugadores restantes en cola: ${waitingQueue.length}`);
 
-        // La lógica de desconexión en partida activa sigue funcionando igual
         const gameId = socket.currentGameId;
         if (gameId && activeGames[gameId]) {
             const game = activeGames[gameId];
-            delete game.positions[socket.id]; // Lo quitamos de la partida
-            io.to(gameId).emit('playerDisconnected', { disconnectedId: socket.id, message: `El jugador ${socket.id} ha abandonado la partida.` });
+            // CORRECCIÓN: Usar el ID de usuario de la base de datos
+            const disconnectedUserId = socket.user.id;
+            delete game.positions[disconnectedUserId]; 
+            io.to(gameId).emit('playerDisconnected', { disconnectedId: disconnectedUserId, message: `El jugador ${socket.user.email} ha abandonado la partida.` });
 
-            // Opcional: Si solo queda un jugador, declararlo ganador
             if (Object.keys(game.positions).length === 1) {
-                const winnerId = Object.keys(game.positions)[0];
-                io.to(gameId).emit('gameOver', { winner: winnerId });
+                // Aquí iría la lógica para manejar al ganador por abandono
+                // (ej. devolver apuestas o declarar ganador al último que queda)
                 delete activeGames[gameId];
             }
         }
     });
 });
 
-// --- Iniciar el Servidor ---
+// --- 7. INICIAR EL SERVIDOR ---
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
-    console.log(`Partida ${gameId} iniciada con los usuarios: ${players.map(p => p.user.email).join(', ')}.`);
 });
-
-
-
-
-
-
-
-
-
-
