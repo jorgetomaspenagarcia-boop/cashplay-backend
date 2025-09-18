@@ -132,28 +132,72 @@ io.on('connection', (socket) => {
     // Avisamos al jugador que está en la cola de espera
     socket.emit('waitingInQueue', { playersInQueue: waitingQueue.length, requiredPlayers: PLAYERS_PER_GAME });
 
-    // Si tenemos suficientes jugadores en la cola, iniciamos una partida
+    // Si tenemos suficientes jugadores en la cola, intentamos iniciar una partida
     if (waitingQueue.length >= PLAYERS_PER_GAME) {
-        console.log(`¡Cola llena! Creando partida para 4 jugadores.`);
-        
-        // Tomamos los primeros 4 jugadores de la cola
+        console.log('Cola llena. Verificando saldos para iniciar partida...');
         const players = waitingQueue.splice(0, PLAYERS_PER_GAME);
-        const playerIds = players.map(p => p.user.id); // Usa el ID permanente del usuario de la base de datos
         
-        const gameId = `${playerIds[0]}-${Date.now()}`; // Creamos un ID único
-        
-        const game = new SerpientesYEscaleras(playerIds);
-        activeGames[gameId] = game;
+        // Usamos una función asíncrona para manejar la lógica de la base de datos
+        (async () => {
+            const connection = await db.getConnection(); // Obtenemos una conexión del pool
+            try {
+                // Iniciamos una transacción: o todo funciona, o no se hace nada.
+                await connection.beginTransaction();
 
-        // Unimos a los 4 jugadores a su sala y les asignamos el ID de la partida
-        players.forEach(player => {
-            player.join(gameId);
-            player.currentGameId = gameId;
-        });
-        
-        // Enviamos el evento de inicio a los 4 jugadores
-        io.to(gameId).emit('gameStart', game.getGameState());
-        console.log(`Partida ${gameId} iniciada con ${playerIds.join(', ')}.`);
+                // 1. Verificamos los saldos de todos los jugadores
+                const playerIds = players.map(p => p.user.id);
+                const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
+
+                // Comprobamos que todos los jugadores encontrados tengan saldo suficiente
+                const hasEnoughBalance = users.length === PLAYERS_PER_GAME && users.every(u => u.balance >= BET_AMOUNT);
+
+                if (!hasEnoughBalance) {
+                    // Si alguien no tiene saldo, cancelamos la partida
+                    console.log('Un jugador no tiene saldo suficiente. Cancelando partida.');
+                    players.forEach(p => p.socket.emit('gameCancelled', { message: 'No todos los jugadores tienen saldo suficiente.' }));
+                    // Devolvemos los jugadores al principio de la cola
+                    waitingQueue.unshift(...players);
+                    await connection.rollback(); // Revertimos la transacción
+                    return; // Salimos de la función
+                }
+
+                // 2. Si todos tienen saldo, les cobramos la apuesta
+                const potAmount = BET_AMOUNT * PLAYERS_PER_GAME;
+                for (const user of users) {
+                    // Descontamos el saldo
+                    await connection.query('UPDATE users SET balance = balance - ? WHERE id = ?', [BET_AMOUNT, user.id]);
+                    // Creamos un registro de la transacción
+                    await connection.query('INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)', [user.id, 'bet', -BET_AMOUNT]);
+                }
+
+                // Si todo fue bien, confirmamos los cambios en la base de datos
+                await connection.commit();
+
+                // 3. Ahora sí, iniciamos el juego
+                const gameId = `${playerIds[0]}-${Date.now()}`;
+                const game = new SerpientesYEscaleras(playerIds);
+                
+                // Guardamos el pozo en la instancia del juego para usarlo al final
+                game.potAmount = potAmount;
+                activeGames[gameId] = game;
+
+                players.forEach(playerSocket => {
+                    playerSocket.join(gameId);
+                    playerSocket.currentGameId = gameId;
+                });
+                
+                io.to(gameId).emit('gameStart', game.getGameState());
+                console.log(`Partida ${gameId} iniciada.`);
+
+            } catch (error) {
+                await connection.rollback(); // Si algo falla, revertimos todo
+                console.error('Error al iniciar la partida:', error);
+                // Devolvemos los jugadores a la cola si hay un error
+                waitingQueue.unshift(...players);
+            } finally {
+                connection.release(); // Liberamos la conexión para que otros la usen
+            }
+        })();
     }
 
     // Evento para lanzar el dado (sin cambios en su lógica interna)
@@ -165,10 +209,46 @@ io.on('connection', (socket) => {
         try {
             const newState = game.playTurn(socket.id);
             io.to(gameId).emit('gameStateUpdate', newState);
-            if (newState.winner) {
-                io.to(gameId).emit('gameOver', newState);
-                delete activeGames[gameId];
-            }
+             if (newState.winner) {
+                    const winnerId = newState.winner;
+                    const potAmount = game.potAmount;
+                    const prize = potAmount * 0.90;
+                    const fee = potAmount * 0.10;
+                    
+                    // Usamos una función asíncrona para el pago
+                    (async () => {
+                        const connection = await db.getConnection();
+                        try {
+                            await connection.beginTransaction();
+
+                            // Pagamos el premio al ganador
+                            await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
+                            
+                            // Registramos la partida en el historial
+                            const [result] = await connection.query('INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)', [winnerId, potAmount, fee]);
+                            const newGameId = result.insertId;
+
+                            // Registramos la transacción del ganador
+                            await connection.query('INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)', [winnerId, 'win', prize, newGameId]);
+
+                            await connection.commit();
+
+                            // Obtenemos el nuevo saldo del ganador para mostrarlo en el frontend
+                            const [[winnerData]] = await connection.query('SELECT balance FROM users WHERE id = ?', [winnerId]);
+
+                            // Anunciamos el fin del juego y enviamos el nuevo saldo
+                            io.to(gameId).emit('gameOver', { ...newState, newBalance: winnerData.balance });
+                            
+                        } catch (error) {
+                            await connection.rollback();
+                            console.error("Error al procesar el fin de la partida:", error);
+                        } finally {
+                            connection.release();
+                        }
+                    })();
+                    
+                    delete activeGames[gameId];
+                }
         } catch (error) {
             socket.emit('errorJuego', { message: error.message });
         }
@@ -204,6 +284,7 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
     console.log(`Partida ${gameId} iniciada con los usuarios: ${players.map(p => p.user.email).join(', ')}.`);
 });
+
 
 
 
