@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const db = require('./db.js');
 const SerpientesYEscaleras = require('./SerpientesYEscaleras.js');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // --- 2. CONFIGURACIÓN INICIAL DE EXPRESS Y SOCKET.IO ---
 const app = express();
@@ -90,6 +91,36 @@ app.get('/api/user/history', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error al obtener el historial del usuario:', error);
         res.status(500).json({ message: 'Error interno del servidor.' });
+    }
+});
+
+app.post('/api/create-payment-intent', authenticateToken, async (req, res) => {
+    try {
+        const { amount } = req.body; // El monto que el usuario quiere depositar
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ error: 'Se requiere un monto válido.' });
+        }
+
+        // Creamos la intención de pago con Stripe.
+        // El monto debe estar en la unidad más pequeña (centavos).
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount * 100, // Ej: 5.50 USD se convierte en 550 centavos
+            currency: 'mxn', // Puedes cambiarlo a 'usd' o tu moneda local
+            automatic_payment_methods: {
+                enabled: true,
+            },
+        });
+
+        // Enviamos el "clientSecret" al frontend.
+        // Este es el pase que el frontend necesita para finalizar el pago.
+        res.send({
+            clientSecret: paymentIntent.client_secret,
+        });
+
+    } catch (error) {
+        console.error("Error al crear la intención de pago:", error);
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -222,3 +253,4 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
