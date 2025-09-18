@@ -65,6 +65,37 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' });
+        }
+
+        // 1. Buscamos al usuario en la base de datos por su email
+        const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        if (users.length === 0) {
+            return res.status(404).json({ message: 'El usuario no existe.' });
+        }
+        const user = users[0];
+
+        // 2. Comparamos la contraseña introducida con la guardada en la BD
+        const isPasswordCorrect = await bcrypt.compare(password, user.password);
+        if (!isPasswordCorrect) {
+            return res.status(401).json({ message: 'Contraseña incorrecta.' }); // 401 Unauthorized
+        }
+
+        // 3. ¡Inicio de sesión exitoso!
+        // En el futuro, aquí es donde generaríamos un "token" de sesión.
+        res.status(200).json({ message: 'Inicio de sesión exitoso.' });
+
+    } catch (error) {
+        console.error('Error en el inicio de sesión:', error);
+        res.status(500).json({ message: 'Error interno del servidor.' });
+    }
+});
+
 // --- Lógica de Conexión ---
 io.on('connection', (socket) => {
     console.log(`✅ Jugador conectado: ${socket.id}`);
@@ -148,6 +179,7 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 
 });
+
 
 
 
