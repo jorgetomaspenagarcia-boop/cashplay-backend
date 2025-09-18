@@ -124,19 +124,7 @@ app.post('/api/create-payment-intent', authenticateToken, async (req, res) => {
     }
 });
 
-¡Excelente! Ahora que tu backend está listo para hablar con Stripe, construiremos el formulario de pago en el frontend. Este es el paso final para permitir que los usuarios depositen fondos.
-
-El proceso es muy seguro: tu frontend hablará con tu backend para iniciar el pago, luego usará una herramienta especial de Stripe para manejar los datos de la tarjeta (estos datos nunca tocarán tu servidor), y finalmente, tras la confirmación de Stripe, le notificaremos a nuestro backend que actualice el saldo.
-
-Un Pequeño Añadido al Backend: Confirmar el Depósito
-Necesitamos un nuevo endpoint que el frontend pueda llamar después de que Stripe confirme que el pago fue exitoso. Este endpoint actualizará el saldo del usuario en nuestra base de datos.
-
-Añade esta nueva ruta a tu server.js:
-
-JavaScript
-
 // En server.js, junto a las otras rutas de la API
-
 app.post('/api/update-balance-after-payment', authenticateToken, async (req, res) => {
     try {
         const { amount } = req.body;
@@ -301,5 +289,6 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
