@@ -104,7 +104,12 @@ app.post('/api/login', async (req, res) => {
         // 5. Enviamos el token al cliente junto con el mensaje de éxito
         res.status(200).json({ 
             message: 'Inicio de sesión exitoso.',
-            token: token 
+            token: token,
+            user: {
+                id: user.id,
+                email: user.email,
+                balance: user.balance
+            }
         });
 
         // --- FIN DE LA LÓGICA DE JWT ---
@@ -198,6 +203,7 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
     console.log(`Partida ${gameId} iniciada con los usuarios: ${players.map(p => p.user.email).join(', ')}.`);
 });
+
 
 
 
