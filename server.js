@@ -15,8 +15,6 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000; 
 
 // --- NUEVO: Servir archivos estáticos ---
-const path = require('path'); // Necesitarás esta línea al principio del archivo
-app.use(express.static(path.join(__dirname, 'public')));
 // ---
 
 const activeGames = {};
@@ -107,3 +105,4 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 
 });
+
