@@ -33,7 +33,8 @@ const PORT = process.env.PORT || 3000;
 const activeGames = {};
 // CAMBIO: Usamos un array como cola de espera en lugar de una sola variable
 let waitingQueue = []; 
-const PLAYERS_PER_GAME = 4; // Definimos el número de jugadores por partida
+const PLAYERS_PER_GAME = 4;
+const BET_AMOUNT = 5.00; // Cada jugador apostará $1.00
 
 app.post('/api/register', async (req, res) => {
     try {
@@ -203,6 +204,7 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
     console.log(`Partida ${gameId} iniciada con los usuarios: ${players.map(p => p.user.email).join(', ')}.`);
 });
+
 
 
 
