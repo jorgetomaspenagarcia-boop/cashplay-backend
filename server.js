@@ -6,7 +6,12 @@ const SerpientesYEscaleras = require('./SerpientesYEscaleras.js');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: {
+      origin: "https://cashplay.space",
+      methods: ["GET", "POST"]
+    }
+});
 const PORT = process.env.PORT || 3000; 
 
 // --- NUEVO: Servir archivos estáticos ---
@@ -100,4 +105,5 @@ io.on('connection', (socket) => {
 // --- Iniciar el Servidor ---
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
+
 });
