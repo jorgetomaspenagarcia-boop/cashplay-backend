@@ -25,6 +25,38 @@ const activeGames = {};
 let waitingQueue = []; 
 const PLAYERS_PER_GAME = 4; // Definimos el número de jugadores por partida
 
+app.post('/api/register', async (req, res) => {
+    try {
+        // 1. Obtenemos el email y la contraseña del cuerpo de la petición
+        const { email, password } = req.body;
+
+        // 2. Verificamos que no falten datos
+        if (!email || !password) {
+            return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' });
+        }
+
+        // 3. Revisamos si el email ya existe en la base de datos
+        const [existingUsers] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+        if (existingUsers.length > 0) {
+            return res.status(409).json({ message: 'Este correo electrónico ya está registrado.' }); // 409 Conflict
+        }
+
+        // 4. Encriptamos la contraseña (¡nunca guardarla como texto plano!)
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // 5. Insertamos el nuevo usuario en la base de datos
+        await db.query('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword]);
+        
+        // 6. Enviamos una respuesta de éxito
+        res.status(201).json({ message: 'Usuario registrado exitosamente.' }); // 201 Created
+
+    } catch (error) {
+        console.error('Error en el registro de usuario:', error);
+        res.status(500).json({ message: 'Error interno del servidor.' });
+    }
+});
+
 // --- Lógica de Conexión ---
 io.on('connection', (socket) => {
     console.log(`✅ Jugador conectado: ${socket.id}`);
@@ -108,5 +140,6 @@ server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 
 });
+
 
 
