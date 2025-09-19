@@ -240,8 +240,8 @@ io.on('connection', (socket) => {
             if (newState.winner) {
                 const winnerId = newState.winner;
                 const potAmount = game.potAmount;
-                const prize = potAmount * 0.90;
-                const fee = potAmount * 0.10;
+                const prize = potAmount * 0.75;
+                const fee = potAmount * 0.25;
                 
                 (async () => {
                     const connection = await db.getConnection();
@@ -293,6 +293,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
