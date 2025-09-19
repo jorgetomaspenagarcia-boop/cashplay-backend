@@ -6,7 +6,7 @@ class SerpientesYEscaleras {
 
         this.boardSize = 100;
         // ¡NUEVO! Generamos el tablero al azar al crear la partida
-        this.snakesAndLadders = this._generateRandomBoard(this.boardSize, 7, 7); // 7 serpientes y 7 escaleras
+        this.snakesAndLadders = this._generateRandomBoard(this.boardSize, 5, 5); // 7 serpientes y 7 escaleras
 
         this.playerIds = playerIds;
         this.positions = {};
@@ -110,3 +110,4 @@ class SerpientesYEscaleras {
 }
 
 module.exports = SerpientesYEscaleras;
+
