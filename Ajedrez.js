@@ -49,6 +49,7 @@ class Ajedrez {
     getGameState() {
         const turnColor = this.chess.turn();
         return {
+            gameType: 'chess', // <-- NUEVA LÍNEA
             playerIds: this.playerIds,
             players: this.players,
             // FEN es la notación estándar para representar la posición de un tablero de ajedrez
@@ -62,5 +63,6 @@ class Ajedrez {
         };
     }
 }
+
 
 module.exports = Ajedrez;
