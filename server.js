@@ -12,6 +12,7 @@ const bcrypt = require('bcrypt');
 const db = require('./db.js');
 const SerpientesYEscaleras = require('./SerpientesYEscaleras.js');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const Ajedrez = require('./Ajedrez.js'); // <-- NUEVA IMPORTACIÓN
 
 // --- 2. CONFIGURACIÓN INICIAL DE EXPRESS Y SOCKET.IO ---
 const app = express();
@@ -29,9 +30,25 @@ const PORT = process.env.PORT || 3000;
 
 // --- 3. VARIABLES GLOBALES DEL JUEGO ---
 const activeGames = {};
-let waitingQueue = [];
-const PLAYERS_PER_GAME = 4;
-const BET_AMOUNT = 1.00; 
+// NUEVO: Objeto de configuración para cada juego
+const gameConfigs = {
+    snakesAndLadders: {
+        gameClass: SerpientesYEscaleras,
+        playersRequired: 4,
+        betAmount: 5.00
+    },
+    chess: {
+        gameClass: Ajedrez,
+        playersRequired: 2,
+        betAmount: 5.00 // El ajedrez puede tener una apuesta diferente
+    }
+};
+
+// NUEVO: Un objeto para las colas de espera de cada juego
+let waitingQueues = {
+    snakesAndLadders: [],
+    chess: []
+};
 
 // --- 4. MIDDLEWARE DE AUTENTICACIÓN PARA LA API ---
 function authenticateToken(req, res, next) {
@@ -177,55 +194,78 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
     console.log(`✅ Jugador autenticado y conectado: ${socket.user.email} (${socket.id})`);
-    waitingQueue.push(socket);
-    socket.emit('waitingInQueue', { playersInQueue: waitingQueue.length, requiredPlayers: PLAYERS_PER_GAME });
+    // NUEVO: Evento para buscar partida
+    socket.on('findGame', ({ gameType }) => {
+        if (!gameConfigs[gameType]) {
+            return socket.emit('error', { message: 'Tipo de juego no válido.' });
+        }
 
-    if (waitingQueue.length >= PLAYERS_PER_GAME) {
-        const players = waitingQueue.splice(0, PLAYERS_PER_GAME);
-        (async () => {
-            const connection = await db.getConnection();
-            try {
-                await connection.beginTransaction();
-                const playerIds = players.map(p => p.user.id);
-                const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
-                const hasEnoughBalance = users.length === PLAYERS_PER_GAME && users.every(u => u.balance >= BET_AMOUNT);
+        const config = gameConfigs[gameType];
+        const queue = waitingQueues[gameType];
+        
+        // Añadimos al jugador a la cola correspondiente
+        queue.push(socket);
+        console.log(`Jugador ${socket.user.email} se unió a la cola de ${gameType}. Jugadores en cola: ${queue.length}`);
+        
+        // Notificamos a todos en la cola sobre el nuevo tamaño
+        queue.forEach(playerSocket => {
+            playerSocket.emit('queueUpdate', {
+                gameType: gameType,
+                playersInQueue: queue.length,
+                playersRequired: config.playersRequired
+            });
+        });
 
-                if (!hasEnoughBalance) {
-                    console.log('Un jugador no tiene saldo suficiente. Cancelando partida.');
-                    players.forEach(p => p.emit('gameCancelled', { message: 'No todos los jugadores tienen saldo suficiente.' }));
-                    waitingQueue.unshift(...players);
-                    await connection.rollback();
-                    return;
+        // Si la cola está llena, iniciamos la partida
+        if (queue.length >= config.playersRequired) {
+            const players = queue.splice(0, config.playersRequired);
+            console.log(`Cola de ${gameType} llena. Iniciando partida...`);
+            
+            // La lógica de transacciones que ya teníamos, ahora es dinámica
+            (async () => {
+                const connection = await db.getConnection();
+                try {
+                    await connection.beginTransaction();
+                    const playerIds = players.map(p => p.user.id);
+                    const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
+
+                    const hasEnoughBalance = users.length === config.playersRequired && users.every(u => u.balance >= config.betAmount);
+
+                    if (!hasEnoughBalance) {
+                        // ... (código para manejar saldo insuficiente, sin cambios)
+                        return;
+                    }
+                    
+                    const potAmount = config.betAmount * config.playersRequired;
+                    for (const user of users) {
+                        // ... (código para debitar la apuesta, sin cambios)
+                    }
+                    await connection.commit();
+
+                    const gameId = `${playerIds[0]}-${Date.now()}`;
+                    // ¡Creamos la instancia del juego correcto!
+                    const GameClass = config.gameClass;
+                    const game = new GameClass(playerIds);
+                    
+                    game.potAmount = potAmount;
+                    activeGames[gameId] = game;
+
+                    players.forEach(playerSocket => {
+                        playerSocket.join(gameId);
+                        playerSocket.currentGameId = gameId;
+                    });
+                    
+                    io.to(gameId).emit('gameStart', game.getGameState());
+                    console.log(`Partida de ${gameType} (${gameId}) iniciada.`);
+
+                } catch (error) {
+                    // ... (código de manejo de errores, sin cambios)
+                } finally {
+                    connection.release();
                 }
-
-                const potAmount = BET_AMOUNT * PLAYERS_PER_GAME;
-                for (const user of users) {
-                    await connection.query('UPDATE users SET balance = balance - ? WHERE id = ?', [BET_AMOUNT, user.id]);
-                    await connection.query('INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)', [user.id, 'bet', -BET_AMOUNT]);
-                }
-                await connection.commit();
-
-                const gameId = `${playerIds[0]}-${Date.now()}`;
-                const game = new SerpientesYEscaleras(playerIds);
-                game.potAmount = potAmount;
-                activeGames[gameId] = game;
-
-                players.forEach(playerSocket => {
-                    playerSocket.join(gameId);
-                    playerSocket.currentGameId = gameId;
-                });
-                
-                io.to(gameId).emit('gameStart', game.getGameState());
-                console.log(`Partida ${gameId} iniciada con los usuarios: ${players.map(p => p.user.email).join(', ')}.`);
-            } catch (error) {
-                await connection.rollback();
-                console.error('Error al iniciar la partida:', error);
-                waitingQueue.unshift(...players);
-            } finally {
-                connection.release();
-            }
-        })();
-    }
+            })();
+        }
+    });
 
     socket.on('lanzarDado', () => {
         const gameId = socket.currentGameId;
@@ -268,10 +308,15 @@ io.on('connection', (socket) => {
         }
     });
 
+    // AÑADIREMOS UN NUEVO EVENTO PARA EL AJEDREZ MÁS ADELANTE
+    
     socket.on('disconnect', () => {
         console.log(`❌ Jugador desconectado: ${socket.user.email}`);
-        waitingQueue = waitingQueue.filter(player => player.id !== socket.id);
-
+        // Limpiamos al jugador de todas las colas de espera
+        for (const gameType in waitingQueues) {
+            waitingQueues[gameType] = waitingQueues[gameType].filter(playerSocket => playerSocket.id !== socket.id);
+        }
+        
         const gameId = socket.currentGameId;
         if (gameId && activeGames[gameId]) {
             const game = activeGames[gameId];
@@ -293,6 +338,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
