@@ -35,10 +35,24 @@ class SerpientesYEscaleras {
             usedSquares.add(end);
         }
 
+        // Generar Escaleras
+        for (let i = 0; i < numLadders; i++) {
+            let start, end;
+            do {
+                start = Math.floor(Math.random() * (size - 15)) + 2; // Escaleras no empiezan muy arriba
+                end = start + Math.floor(Math.random() * 20) + 10; // Deben subir al menos 10 casillas
+            } while (usedSquares.has(start) || usedSquares.has(end) || end >= size);
+            
+            board[start] = end;
+            usedSquares.add(start);
+            usedSquares.add(end);
+        }
+
+        // Generar Serpientes
         for (let i = 0; i < numSnakes; i++) {
             let start, end;
             do {
-                start = Math.floor(Math.random() * (size - 10)) + 10; // Serpientes no empiezan muy abajo
+                start = Math.floor(Math.random() * (size - 15)) + 12; // Serpientes no empiezan muy abajo
                 end = start - (Math.floor(Math.random() * 20) + 10); // Deben bajar al menos 10 casillas
             } while (usedSquares.has(start) || usedSquares.has(end) || end <= 1);
 
@@ -55,23 +69,27 @@ class SerpientesYEscaleras {
     }
 
     playTurn(playerId) {
-        // ... (el resto de esta función no cambia)
         if (this.winner) throw new Error("El juego ya ha terminado.");
         if (playerId !== this.playerIds[this.currentPlayerIndex]) throw new Error("No es el turno de este jugador.");
+        
         const roll = this._rollDice();
         this.lastRoll = roll;
         let newPosition = this.positions[playerId] + roll;
+
         if (newPosition <= this.boardSize) {
+            // Si cae en una casilla especial, se mueve a la nueva posición
             if (this.snakesAndLadders[newPosition]) {
                 newPosition = this.snakesAndLadders[newPosition];
             }
             this.positions[playerId] = newPosition;
         }
+
         if (this.positions[playerId] === this.boardSize) {
             this.winner = playerId;
         } else {
             this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.playerIds.length;
         }
+
         return this.getGameState();
     }
 
