@@ -1,7 +1,3 @@
-console.log('--- VERIFICANDO VARIABLES DE ENTORNO ---');
-console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Cargado ✅' : 'NO ENCONTRADO O VACÍO ❌');
-console.log('--- FIN DE VERIFICACIÓN ---');
-
 // --- 1. IMPORTACIONES ---
 const express = require('express');
 const http = require('http');
@@ -30,21 +26,10 @@ const PORT = process.env.PORT || 3000;
 
 // --- 3. VARIABLES GLOBALES DEL JUEGO ---
 const activeGames = {};
-// NUEVO: Objeto de configuración para cada juego
 const gameConfigs = {
-    snakesAndLadders: {
-        gameClass: SerpientesYEscaleras,
-        playersRequired: 4,
-        betAmount: 5.00
-    },
-    chess: {
-        gameClass: Ajedrez,
-        playersRequired: 2,
-        betAmount: 5.00 // El ajedrez puede tener una apuesta diferente
-    }
+    snakesAndLadders: { gameClass: SerpientesYEscaleras, playersRequired: 4, betAmount: 1.00 },
+    chess: { gameClass: Ajedrez, playersRequired: 2, betAmount: 5.00 }
 };
-
-// NUEVO: Un objeto para las colas de espera de cada juego
 let waitingQueues = {
     snakesAndLadders: [],
     chess: []
@@ -194,7 +179,6 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
     console.log(`✅ Jugador autenticado y conectado: ${socket.user.email} (${socket.id})`);
-    // NUEVO: Evento para buscar partida
     socket.on('findGame', ({ gameType }) => {
         if (!gameConfigs[gameType]) {
             return socket.emit('error', { message: 'Tipo de juego no válido.' });
@@ -308,8 +292,28 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Evento para manejar movimientos de ajedrez
+    socket.on('makeChessMove', (move) => {
+        const gameId = socket.currentGameId;
+        if (!gameId || !activeGames[gameId]) return;
+
+        const game = activeGames[gameId];
+        try {
+            const newState = game.makeMove(socket.user.id, move);
+            // Enviamos el estado actualizado a ambos jugadores en la partida
+            io.to(gameId).emit('chessMoveUpdate', newState);
+
+            if (newState.isGameOver) {
+                // Aquí iría la lógica de pago para el ajedrez
+                console.log(`Partida de ajedrez ${gameId} ha terminado.`);
+                // delete activeGames[gameId];
+            }
+        } catch (error) {
+            socket.emit('errorJuego', { message: error.message });
+        }
+    });
+
     // AÑADIREMOS UN NUEVO EVENTO PARA EL AJEDREZ MÁS ADELANTE
-    
     socket.on('disconnect', () => {
         console.log(`❌ Jugador desconectado: ${socket.user.email}`);
         // Limpiamos al jugador de todas las colas de espera
@@ -346,6 +350,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
