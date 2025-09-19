@@ -83,6 +83,7 @@ class SerpientesYEscaleras {
 
     getGameState() {
         return {
+            gameType: 'snakesAndLadders', // <-- NUEVA LÍNEA
             playerIds: this.playerIds,
             positions: this.positions,
             currentPlayerId: this.playerIds[this.currentPlayerIndex],
@@ -98,5 +99,6 @@ class SerpientesYEscaleras {
 }
 
 module.exports = SerpientesYEscaleras;
+
 
 
