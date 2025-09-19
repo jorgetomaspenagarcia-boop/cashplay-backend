@@ -23,18 +23,6 @@ class SerpientesYEscaleras {
         const board = {};
         const usedSquares = new Set([1, size]); // No se puede empezar o terminar en 1 o 100
 
-        for (let i = 0; i < numLadders; i++) {
-            let start, end;
-            do {
-                start = Math.floor(Math.random() * (size - 10)) + 2; // Escaleras no empiezan muy arriba
-                end = start + Math.floor(Math.random() * 20) + 10; // Deben subir al menos 10 casillas
-            } while (usedSquares.has(start) || usedSquares.has(end) || end >= size);
-            
-            board[start] = end;
-            usedSquares.add(start);
-            usedSquares.add(end);
-        }
-
         // Generar Escaleras
         for (let i = 0; i < numLadders; i++) {
             let start, end;
@@ -110,4 +98,5 @@ class SerpientesYEscaleras {
 }
 
 module.exports = SerpientesYEscaleras;
+
 
