@@ -318,26 +318,35 @@ io.on('connection', (socket) => {
         }
         
         const gameId = socket.currentGameId;
-        if (gameId && activeGames[gameId]) {
-            const game = activeGames[gameId];
-            // CORRECCIÓN: Usar el ID de usuario de la base de datos
-            const disconnectedUserId = socket.user.id;
-            delete game.positions[disconnectedUserId]; 
-            io.to(gameId).emit('playerDisconnected', { disconnectedId: disconnectedUserId, message: `El jugador ${socket.user.email} ha abandonado la partida.` });
+        // Verificación crucial: ¿El juego todavía existe en la lista de partidas activas?
+    if (gameId && activeGames[gameId]) {
+        const game = activeGames[gameId];
+        const disconnectedUserId = socket.user.id;
 
-            if (Object.keys(game.positions).length === 1) {
-                // Aquí iría la lógica para manejar al ganador por abandono
-                // (ej. devolver apuestas o declarar ganador al último que queda)
-                delete activeGames[gameId];
-            }
+        // Verificamos que el objeto 'positions' exista antes de modificarlo
+        if (game.positions) {
+            delete game.positions[disconnectedUserId];
         }
-    });
+
+        io.to(gameId).emit('playerDisconnected', { 
+            disconnectedId: disconnectedUserId, 
+            message: `El jugador ${socket.user.email} ha abandonado la partida.` 
+        });
+
+        // Opcional: Si solo queda un jugador, lo declaramos ganador
+        if (game.positions && Object.keys(game.positions).length === 1) {
+            console.log(`Partida ${gameId} terminada por abandono.`);
+            // Aquí podrías añadir la lógica para pagar al último jugador que queda
+            delete activeGames[gameId];
+        }
+    }
 });
 
 // --- 7. INICIAR EL SERVIDOR ---
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
