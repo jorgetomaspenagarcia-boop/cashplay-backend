@@ -300,33 +300,51 @@ io.on('connection', (socket) => {
                 const potAmount = game.potAmount;
                 const prize = potAmount * 0.75;
                 const fee = potAmount * 0.25;
-                
+            
                 (async () => {
                     const connection = await db.getConnection();
                     try {
                         await connection.beginTransaction();
+            
+                        // 1. Actualizamos saldo del ganador
                         await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
-                        if (!winnerId) {
-                            console.error("No hay ganador definido, no se puede crear la partida en DB.");
-                            return;
-                        }
-                        const [result] = await connection.query('INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)', [winnerId, potAmount, fee]);
-                        const newGameId = result.insertId;
-                        if (!newGameId) {
-                            console.error("No se pudo obtener el ID de la nueva partida.");
-                            return;
-                        }
-                        await connection.query('INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)', [winnerId, 'win', prize, newGameId]);
+            
+                        // 2. Registramos la partida
+                        const [gameResult] = await connection.query(
+                            'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
+                            [winnerId, potAmount, fee]
+                        );
+                        const newGameId = gameResult.insertId;
+            
+                        // 3. Registramos la transacción del ganador
+                        await connection.query(
+                            'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
+                            [winnerId, 'win', prize, newGameId]
+                        );
+            
+                        // 4. Confirmamos todos los cambios
                         await connection.commit();
+            
+                        // 5. Obtenemos el saldo actualizado
                         const [[winnerData]] = await connection.query('SELECT balance FROM users WHERE id = ?', [winnerId]);
-                        io.to(gameId).emit('gameOver', { ...newState, newBalance: Number(winnerData.balance) || 0 });
+            
+                        // 6. Emitimos al frontend
+                        io.to(gameId).emit('gameOver', { 
+                            ...newState, 
+                            newBalance: Number(winnerData.balance) || 0 
+                        });
+            
                     } catch (error) {
                         await connection.rollback();
                         console.error("Error al procesar el fin de la partida:", error);
+                        // Podrías avisar al jugador
+                        io.to(gameId).emit('gameError', { message: 'Ocurrió un error al procesar la partida.' });
                     } finally {
                         connection.release();
                     }
                 })();
+            
+                // 7. Eliminamos la partida activa de memoria
                 delete activeGames[gameId];
             }
         } catch (error) {
