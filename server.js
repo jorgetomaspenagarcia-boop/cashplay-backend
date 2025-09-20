@@ -131,29 +131,47 @@ app.post('/api/update-balance-after-payment', authenticateToken, async (req, res
     }
 });
 
-// --- Retiro de saldo ---
-app.post('/withdraw', authenticateToken, async (req, res) => {
+// --- Solicitar retiro ---
+app.post("/withdraw", authenticateToken, async (req, res) => {
   const { amount } = req.body;
   const userId = req.user.id;
   if (!amount || amount <= 0) {
-    return res.status(400).json({ message: "Monto inválido." });
+    return res.status(400).json({ message: "Monto inválido" });
   }
   try {
-    // Verificar saldo disponible
+    // Verificar saldo del usuario
     const [rows] = await db.query("SELECT balance FROM users WHERE id = ?", [userId]);
-    const userBalance = rows[0].balance;
-    if (userBalance < amount) {
-      return res.status(400).json({ message: "Saldo insuficiente." });
+    if (rows.length === 0) return res.status(404).json({ message: "Usuario no encontrado" });
+    const balance = rows[0].balance;
+    if (balance < amount) {
+      return res.status(400).json({ message: "Saldo insuficiente" });
     }
-    // Descontar saldo
+    // Descontar saldo del usuario
     await db.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, userId]);
-    // Registrar retiro
-    await db.query("INSERT INTO withdrawals (user_id, amount, status, created_at) VALUES (?, ?, 'pending', NOW())", 
-      [userId, amount]);
-    res.json({ message: "Solicitud de retiro enviada. Será procesada pronto." });
+    // Insertar en la tabla withdrawals
+    await db.query(
+      "INSERT INTO withdrawals (user_id, amount, status) VALUES (?, ?, ?)",
+      [userId, amount, "pending"]
+    );
+    res.json({ message: "Retiro solicitado correctamente. En proceso de aprobación." });
   } catch (error) {
-    console.error("Error en /withdraw:", error);
-    res.status(500).json({ message: "Error al procesar el retiro." });
+    console.error(error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// --- Obtener historial de retiros ---
+app.get("/withdrawals", authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const [rows] = await db.query(
+      "SELECT id, amount, status, created_at FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC",
+      [userId]
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error al obtener el historial de retiros" });
   }
 });
 
@@ -310,5 +328,6 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
