@@ -373,22 +373,72 @@ io.on('connection', (socket) => {
             io.to(gameId).emit('chessMoveUpdate', newState);
 
             if (newState.isGameOver) {
-                // Aquí iría la lógica de pago para el ajedrez
-                console.log(`Partida de ajedrez ${gameId} ha terminado.`);
-
                 // Lógica de pago similar a la de Serpientes y Escaleras
-            const winnerId = newState.isCheckmate ? game.players[newState.turn === 'w' ? 'b' : 'w'] : null;
+                const winnerId = newState.isCheckmate ? game.players[newState.turn === 'w' ? 'b' : 'w'] : null;
             
-            io.to(gameId).emit('gameOver', { 
-                winner: winnerId,
-                message: 'La partida de ajedrez ha terminado.'
-            });
-                // delete activeGames[gameId];
+               if (!winnerId) {
+                // Empate o abandono
+                io.to(gameId).emit('gameOver', { 
+                    message: 'La partida terminó en empate o abandono.',
+                    isDraw: true
+                });
+                delete activeGames[gameId];
+                return;
             }
-        } catch (error) {
-            socket.emit('errorJuego', { message: error.message });
-        }
-    });
+                // Lógica de pago similar a Serpientes y Escaleras
+            (async () => {
+                const connection = await db.getConnection();
+                try {
+                    await connection.beginTransaction();
+        
+                    const potAmount = game.potAmount;
+                    const prize = potAmount * 0.75;
+                    const fee = potAmount * 0.25;
+        
+                    // 1. Insertar partida en DB
+                    const [gameInsertResult] = await connection.query(
+                        'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
+                        [winnerId, potAmount, fee]
+                    );
+                    const newGameId = gameInsertResult.insertId;
+        
+                    // 2. Actualizar saldo del ganador
+                    await connection.query(
+                        'UPDATE users SET balance = balance + ? WHERE id = ?',
+                        [prize, winnerId]
+                    );
+        
+                    // 3. Registrar transacción del ganador
+                    await connection.query(
+                        'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
+                        [winnerId, 'win', prize, newGameId]
+                    );
+        
+                    await connection.commit();
+        
+                    // 4. Emitir saldo actualizado y fin de juego
+                    const [[winnerData]] = await connection.query(
+                        'SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?',
+                        [winnerId]
+                    );
+        
+                    io.to(gameId).emit('gameOver', {
+                        ...newState,
+                        winner: winnerId,
+                        newBalance: Number(winnerData.balance),
+                        message: 'La partida de ajedrez ha terminado.'
+                    });
+        
+                } catch (error) {
+                    await connection.rollback();
+                    console.error("Error al procesar fin de partida de ajedrez:", error);
+                    io.to(gameId).emit('gameError', { message: 'Ocurrió un error al procesar la partida.' });
+                } finally {
+                    connection.release();
+                    delete activeGames[gameId];
+                }
+        })();
+    }
 
     // AÑADIREMOS UN NUEVO EVENTO PARA EL AJEDREZ MÁS ADELANTE
     socket.on('disconnect', () => {
@@ -428,6 +478,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
