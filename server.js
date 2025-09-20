@@ -148,6 +148,12 @@ app.post('/api/update-balance-after-payment', authenticateToken, async (req, res
             // 2. Registramos la transacción
             await connection.query('INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)', [userId, 'deposit', amount]);
             await connection.commit();
+            console.log("INSERT Transaction:", {
+                user_id: winnerId,
+                type: 'win',
+                amount: prize,
+                game_id: newGameId
+            });
             
             // 3. Obtenemos y devolvemos el nuevo saldo
             const [[user]] = await connection.query('SELECT balance FROM users WHERE id = ?', [userId]);
@@ -397,6 +403,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
