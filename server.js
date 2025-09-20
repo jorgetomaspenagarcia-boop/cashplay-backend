@@ -313,11 +313,11 @@ io.on('connection', (socket) => {
                         await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
             
                         // 2. Registramos la partida en games
-                        const result = await connection.query(
+                        const [result] = await connection.query(
                             'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
                             [winnerId, potAmount, fee]
                         );
-                        const newGameId = result[0].insertId; // <-- aquí está el insertId correcto
+                        const newGameId = result.insertId;
 
                         // 3. Registramos la transacción del ganador
                         await connection.query(
@@ -424,6 +424,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
