@@ -316,7 +316,7 @@ io.on('connection', (socket) => {
                         const newGameId = gameInsertResult.insertId;
                         console.log('Partida insertada en games con ID:', newGameId);
 
-                        / 2. Actualizamos saldo del ganador
+                        // 2. Actualizamos saldo del ganador
                         await connection.query(
                             'UPDATE users SET balance = balance + ? WHERE id = ?',
                             [prize, winnerId]
@@ -428,6 +428,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
