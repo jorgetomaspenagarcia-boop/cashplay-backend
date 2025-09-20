@@ -131,6 +131,32 @@ app.post('/api/update-balance-after-payment', authenticateToken, async (req, res
     }
 });
 
+// --- Retiro de saldo ---
+app.post('/withdraw', authenticateToken, async (req, res) => {
+  const { amount } = req.body;
+  const userId = req.user.id;
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: "Monto inválido." });
+  }
+  try {
+    // Verificar saldo disponible
+    const [rows] = await db.query("SELECT balance FROM users WHERE id = ?", [userId]);
+    const userBalance = rows[0].balance;
+    if (userBalance < amount) {
+      return res.status(400).json({ message: "Saldo insuficiente." });
+    }
+    // Descontar saldo
+    await db.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, userId]);
+    // Registrar retiro
+    await db.query("INSERT INTO withdrawals (user_id, amount, status, created_at) VALUES (?, ?, 'pending', NOW())", 
+      [userId, amount]);
+    res.json({ message: "Solicitud de retiro enviada. Será procesada pronto." });
+  } catch (error) {
+    console.error("Error en /withdraw:", error);
+    res.status(500).json({ message: "Error al procesar el retiro." });
+  }
+});
+
 // --- 6. SOCKET.IO ---
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -284,4 +310,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
