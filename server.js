@@ -294,7 +294,6 @@ io.on('connection', (socket) => {
 
         const game = activeGames[gameId];
         try {
-            // CORRECCIÓN: Usar el ID de usuario de la base de datos
             const newState = game.playTurn(socket.user.id);
             io.to(gameId).emit('gameStateUpdate', newState);
             
@@ -308,30 +307,35 @@ io.on('connection', (socket) => {
                     const connection = await db.getConnection();
                     try {
                         await connection.beginTransaction();
-            
-                        // 1. Actualizamos saldo del ganador
-                        await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
-            
-                        // 2. Registramos la partida en games
-                        const [result] = await connection.query(
+
+                        // 1. Insertamos la partida en games
+                        const [gameInsertResult] = await connection.query(
                             'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
                             [winnerId, potAmount, fee]
                         );
-                        const newGameId = result.insertId;
+                        const newGameId = gameInsertResult.insertId;
+                        console.log('Partida insertada en games con ID:', newGameId);
 
+                        / 2. Actualizamos saldo del ganador
+                        await connection.query(
+                            'UPDATE users SET balance = balance + ? WHERE id = ?',
+                            [prize, winnerId]
+                        );
+            
                         // 3. Registramos la transacción del ganador
                         await connection.query(
                             'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
                             [winnerId, 'win', prize, newGameId]
                         );
-            
-                        // 4. Confirmamos todos los cambios
+
                         await connection.commit();
-            
-                        // 5. Obtenemos el saldo actualizado
-                        const [[winnerData]] = await connection.query('SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?', [winnerId]);
-                    
-                        // 6. Emitimos al frontend
+                        console.log('Transacción confirmada para ganador:', winnerId);
+
+                        // 4. Emitimos saldo actualizado y fin de juego
+                        const [[winnerData]] = await connection.query(
+                            'SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?',
+                            [winnerId]
+                        );
                         io.to(gameId).emit('gameOver', {
                             ...newState,
                             newBalance: Number(winnerData.balance) || 0
@@ -424,6 +428,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
