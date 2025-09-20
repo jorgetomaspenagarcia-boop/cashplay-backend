@@ -80,7 +80,7 @@ app.post('/api/login', async (req, res) => {
         res.status(200).json({
             message: 'Inicio de sesión exitoso.',
             token: token,
-            user: { id: user.id, email: user.email, balance: user.balance }
+            user: { id: user.id, email: user.email, balance: Number(user.balance) || 0 }
         });
     } catch (error) {
         console.error('Error en el inicio de sesión:', error);
@@ -217,6 +217,7 @@ io.on('connection', (socket) => {
                     console.log("LOG 4: Transacción iniciada.");
                     const playerIds = players.map(p => p.user.id);
                     const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
+                    users.forEach(u => u.balance = Number(u.balance) || 0);
                     console.log("LOG 5: Balances verificados.");
 
                     const potAmount = config.betAmount * config.playersRequired;
@@ -304,7 +305,7 @@ io.on('connection', (socket) => {
                         await connection.query('INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)', [winnerId, 'win', prize, newGameId]);
                         await connection.commit();
                         const [[winnerData]] = await connection.query('SELECT balance FROM users WHERE id = ?', [winnerId]);
-                        io.to(gameId).emit('gameOver', { ...newState, newBalance: winnerData.balance });
+                        io.to(gameId).emit('gameOver', { ...newState, newBalance: Number(winnerData.balance) || 0 });
                     } catch (error) {
                         await connection.rollback();
                         console.error("Error al procesar el fin de la partida:", error);
@@ -388,6 +389,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
