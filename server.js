@@ -300,8 +300,16 @@ io.on('connection', (socket) => {
                     try {
                         await connection.beginTransaction();
                         await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
+                        if (!winnerId) {
+                            console.error("No hay ganador definido, no se puede crear la partida en DB.");
+                            return;
+                        }
                         const [result] = await connection.query('INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)', [winnerId, potAmount, fee]);
                         const newGameId = result.insertId;
+                        if (!newGameId) {
+                            console.error("No se pudo obtener el ID de la nueva partida.");
+                            return;
+                        }
                         await connection.query('INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)', [winnerId, 'win', prize, newGameId]);
                         await connection.commit();
                         const [[winnerData]] = await connection.query('SELECT balance FROM users WHERE id = ?', [winnerId]);
@@ -389,6 +397,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
