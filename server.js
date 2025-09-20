@@ -295,7 +295,9 @@ io.on('connection', (socket) => {
     // Evento para manejar movimientos de ajedrez
     socket.on('makeChessMove', (move) => {
         const gameId = socket.currentGameId;
-        if (!gameId || !activeGames[gameId]) return;
+        if (!gameId || !activeGames[gameId] || !(activeGames[gameId] instanceof Ajedrez)) {
+            return socket.emit('errorJuego', { message: 'No estás en una partida de ajedrez válida.' });
+        }
 
         const game = activeGames[gameId];
         try {
@@ -306,6 +308,14 @@ io.on('connection', (socket) => {
             if (newState.isGameOver) {
                 // Aquí iría la lógica de pago para el ajedrez
                 console.log(`Partida de ajedrez ${gameId} ha terminado.`);
+
+                // Lógica de pago similar a la de Serpientes y Escaleras
+            const winnerId = newState.isCheckmate ? game.players[newState.turn === 'w' ? 'b' : 'w'] : null;
+            
+            io.to(gameId).emit('gameOver', { 
+                winner: winnerId,
+                message: 'La partida de ajedrez ha terminado.'
+            });
                 // delete activeGames[gameId];
             }
         } catch (error) {
@@ -350,6 +360,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
