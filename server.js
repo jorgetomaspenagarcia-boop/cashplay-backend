@@ -151,7 +151,8 @@ app.post('/api/update-balance-after-payment', authenticateToken, async (req, res
             
             // 3. Obtenemos y devolvemos el nuevo saldo
             const [[user]] = await connection.query('SELECT balance FROM users WHERE id = ?', [userId]);
-            res.status(200).json({ newBalance: user.balance });
+            res.status(200).json({ newBalance: Number(user.balance) || 0 });
+
 
         } catch (error) {
             await connection.rollback();
@@ -387,6 +388,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
