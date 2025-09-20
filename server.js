@@ -202,35 +202,35 @@ io.on('connection', (socket) => {
 
         // Si la cola está llena, iniciamos la partida
         if (queue.length >= config.playersRequired) {
+             console.log("LOG 1: La cola está llena. Entrando a la lógica de inicio de partida...");
             const players = queue.splice(0, config.playersRequired);
-            console.log(`Cola de ${gameType} llena. Iniciando partida...`);
             
             // La lógica de transacciones que ya teníamos, ahora es dinámica
             (async () => {
+                 console.log("LOG 2: Función asíncrona iniciada.");
                 const connection = await db.getConnection();
+                console.log("LOG 3: Conexión a la DB obtenida.");
                 try {
                     await connection.beginTransaction();
+                    console.log("LOG 4: Transacción iniciada.");
                     const playerIds = players.map(p => p.user.id);
                     const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
+                    console.log("LOG 5: Balances verificados.");
 
-                    const hasEnoughBalance = users.length === config.playersRequired && users.every(u => u.balance >= config.betAmount);
-
-                    if (!hasEnoughBalance) {
-                        // ... (código para manejar saldo insuficiente, sin cambios)
-                        return;
-                    }
-                    
                     const potAmount = config.betAmount * config.playersRequired;
                     for (const user of users) {
-                        // ... (código para debitar la apuesta, sin cambios)
+                        await connection.query('UPDATE users SET balance = balance - ? WHERE id = ?', [config.betAmount, user.id]);
+                        await connection.query('INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)', [user.id, 'bet', -config.betAmount]);
                     }
+                    console.log("LOG 6: Apuestas cobradas.");
+
                     await connection.commit();
+                    console.log("LOG 7: Transacción confirmada (commit).");
 
                     const gameId = `${playerIds[0]}-${Date.now()}`;
                     // ¡Creamos la instancia del juego correcto!
                     const GameClass = config.gameClass;
                     const game = new GameClass(playerIds);
-                    
                     game.potAmount = potAmount;
                     activeGames[gameId] = game;
 
@@ -238,12 +238,37 @@ io.on('connection', (socket) => {
                         playerSocket.join(gameId);
                         playerSocket.currentGameId = gameId;
                     });
-                    
+
+                    console.log("LOG 8: A punto de emitir 'gameStart'.");
                     io.to(gameId).emit('gameStart', game.getGameState());
-                    console.log(`Partida de ${gameType} (${gameId}) iniciada.`);
+                    console.log(`LOG 9: Evento 'gameStart' emitido.`);
+
+                    // Comprobamos que todos los jugadores encontrados tengan saldo suficiente
+                    const hasEnoughBalance = users.length === config.playersRequired && users.every(u => u.balance >= config.betAmount);
+                    
+                    if (!hasEnoughBalance) {
+                        // Si alguien no tiene saldo, cancelamos la partida
+                        console.log('Un jugador no tiene saldo suficiente. Devolviendo jugadores a la cola.');
+                        
+                        // Notificamos a cada jugador que la partida fue cancelada
+                        players.forEach(playerSocket => {
+                            playerSocket.emit('gameCancelled', { message: 'Uno de los jugadores no tiene saldo suficiente.' });
+                        });
+                        
+                        // Devolvemos los jugadores al principio de la cola de espera correcta
+                        waitingQueues[gameType].unshift(...players);
+                        
+                        // Revertimos la transacción en la base de datos
+                        await connection.rollback();
+                        
+                        // Salimos de la función para detener la creación de la partida
+                        return; 
+                    }
 
                 } catch (error) {
-                    // ... (código de manejo de errores, sin cambios)
+                    await connection.rollback();
+                    console.error('ERROR EN EL BLOQUE DE INICIO DE PARTIDA:', error);
+                    waitingQueue.unshift(...players);
                 } finally {
                     connection.release();
                 }
@@ -360,6 +385,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
