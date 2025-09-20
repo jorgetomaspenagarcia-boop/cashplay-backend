@@ -9,7 +9,6 @@ const db = require('./db.js');
 const SerpientesYEscaleras = require('./SerpientesYEscaleras.js');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Ajedrez = require('./Ajedrez.js'); // <-- NUEVA IMPORTACIÓN
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 // --- 2. CONFIGURACIÓN INICIAL DE EXPRESS Y SOCKET.IO ---
@@ -401,6 +400,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
