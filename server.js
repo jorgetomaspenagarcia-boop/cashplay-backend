@@ -381,11 +381,13 @@ io.on('connection', (socket) => {
         }
     }
 });
+});
 
 // --- 7. INICIAR EL SERVIDOR ---
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
