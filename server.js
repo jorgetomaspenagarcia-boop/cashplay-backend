@@ -9,6 +9,8 @@ const db = require('./db.js');
 const SerpientesYEscaleras = require('./SerpientesYEscaleras.js');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Ajedrez = require('./Ajedrez.js'); // <-- NUEVA IMPORTACIÓN
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 // --- 2. CONFIGURACIÓN INICIAL DE EXPRESS Y SOCKET.IO ---
 const app = express();
@@ -45,6 +47,25 @@ function authenticateToken(req, res, next) {
 }
 
 // --- 5. RUTAS DE LA API ---
+// Login de admin
+app.post('/api/admin/login', async (req, res) => {
+    const { user, password } = req.body;
+    if (!user || !password) return res.status(400).json({ message: "Usuario y contraseña requeridos" });
+    try {
+        const [rows] = await db.query("SELECT * FROM adminusers WHERE user = ?", [user]);
+        if (rows.length === 0) return res.status(404).json({ message: "Admin no encontrado" });
+        const admin = rows[0];
+        const match = await bcrypt.compare(password, admin.password);
+        if (!match) return res.status(401).json({ message: "Contraseña incorrecta" });
+
+        const token = jwt.sign({ id: admin.id, user: admin.user, role: admin.role }, process.env.JWT_SECRET, { expiresIn: '8h' });
+        res.json({ message: "Login exitoso", token });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error en el servidor" });
+    }
+});
+
 // Registro
 app.post('/api/register', async (req, res) => {
     try {
@@ -327,6 +348,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
