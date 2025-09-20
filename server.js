@@ -312,14 +312,13 @@ io.on('connection', (socket) => {
                         // 1. Actualizamos saldo del ganador
                         await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
             
-                        // 2. Registramos la partida
-                        const gameResult = await connection.query(
+                        // 2. Registramos la partida en games
+                        const result = await connection.query(
                             'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
                             [winnerId, potAmount, fee]
                         );
-                        const newGameId = gameResult[0].insertId; // <-- así obtienes correctamente el insertId
+                        const newGameId = result[0].insertId; // <-- aquí está el insertId correcto
 
-            
                         // 3. Registramos la transacción del ganador
                         await connection.query(
                             'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
@@ -330,9 +329,13 @@ io.on('connection', (socket) => {
                         await connection.commit();
             
                         // 5. Obtenemos el saldo actualizado
-                        const [rows] = await connection.query('SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?', [winnerId]);
-                        const winnerData = rows[0];
-                        io.to(gameId).emit('gameOver', { ...newState, newBalance: Number(winnerData.balance) });
+                        const [[winnerData]] = await connection.query('SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?', [winnerId]);
+                    
+                        // 6. Emitimos al frontend
+                        io.to(gameId).emit('gameOver', {
+                            ...newState,
+                            newBalance: Number(winnerData.balance) || 0
+                        });
             
                     } catch (error) {
                         await connection.rollback();
@@ -421,6 +424,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
