@@ -208,6 +208,46 @@ app.get("/api/withdrawals", authenticateToken, async (req, res) => {
   }
 });
 
+// Obtener retiros pendientes
+app.get('/api/admin/withdrawals', authenticateAdmin, async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            "SELECT w.id, w.user_id, w.amount, w.status, w.account_info, w.created_at, u.email " +
+            "FROM withdrawals w JOIN users u ON w.user_id = u.id " +
+            "WHERE w.status = 'pending' ORDER BY w.created_at ASC"
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al obtener retiros pendientes' });
+    }
+});
+
+// Aprobar o rechazar retiro
+app.post('/api/admin/withdrawals/:id', authenticateAdmin, async (req, res) => {
+    const withdrawalId = req.params.id;
+    const { action } = req.body; // 'approve' o 'reject'
+    try {
+        const [rows] = await db.query("SELECT * FROM withdrawals WHERE id = ?", [withdrawalId]);
+        if (rows.length === 0) return res.status(404).json({ message: "Retiro no encontrado" });
+        const withdrawal = rows[0];
+        if (withdrawal.status !== 'pending') return res.status(400).json({ message: "Retiro ya procesado" });
+        if (action === 'approve') {
+            await db.query("UPDATE users SET balance = balance - ? WHERE id = ?", [withdrawal.amount, withdrawal.user_id]);
+            await db.query("UPDATE withdrawals SET status = 'approved', updated_at = NOW() WHERE id = ?", [withdrawalId]);
+            res.json({ message: "Retiro aprobado y balance actualizado" });
+        } else if (action === 'reject') {
+            await db.query("UPDATE withdrawals SET status = 'rejected', updated_at = NOW() WHERE id = ?", [withdrawalId]);
+            res.json({ message: "Retiro rechazado" });
+        } else {
+            res.status(400).json({ message: "Acción inválida" });
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error al procesar retiro" });
+    }
+});
+
 // --- 6. SOCKET.IO ---
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -361,6 +401,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
