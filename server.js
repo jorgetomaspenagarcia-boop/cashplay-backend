@@ -179,6 +179,7 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
     console.log(`✅ Jugador autenticado y conectado: ${socket.user.email} (${socket.id})`);
+    
     socket.on('findGame', ({ gameType }) => {
         if (!gameConfigs[gameType]) {
             return socket.emit('error', { message: 'Tipo de juego no válido.' });
@@ -385,6 +386,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
