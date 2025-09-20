@@ -70,7 +70,7 @@ app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
         if (!email || !password) { return res.status(400).json({ message: 'El email y la contraseña son obligatorios.' }); }
-        const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const [users] = await db.query('SELECT id, email, COALESCE(balance, 0) AS balance, password FROM users WHERE email = ?', [email]);
         if (users.length === 0) { return res.status(404).json({ message: 'El usuario no existe.' }); }
         const user = users[0];
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
@@ -79,8 +79,8 @@ app.post('/api/login', async (req, res) => {
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
         res.status(200).json({
             message: 'Inicio de sesión exitoso.',
-            token: token,
-            user: { id: user.id, email: user.email, balance: Number(user.balance) || 0 }
+            token,
+            user: { id: user.id, email: user.email, balance: Number(user.balance) }
         });
     } catch (error) {
         console.error('Error en el inicio de sesión:', error);
@@ -156,9 +156,10 @@ app.post('/api/update-balance-after-payment', authenticateToken, async (req, res
             });
             
             // 3. Obtenemos y devolvemos el nuevo saldo
-            const [[user]] = await connection.query('SELECT balance FROM users WHERE id = ?', [userId]);
-            res.status(200).json({ newBalance: Number(user.balance) || 0 });
-
+            const [rows] = await connection.query('SELECT COALESCE(balance, 0) AS balance FROM users WHERE id = ?', [userId]);
+            const user = rows[0];
+            console.log('Saldo actualizado en DB:', user.balance);
+            res.status(200).json({ newBalance: Number(user.balance) });
 
         } catch (error) {
             await connection.rollback();
@@ -223,7 +224,9 @@ io.on('connection', (socket) => {
                     console.log("LOG 4: Transacción iniciada.");
                     const playerIds = players.map(p => p.user.id);
                     const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
-                    users.forEach(u => u.balance = Number(u.balance) || 0);
+                    users.forEach(u => {
+                        u.balance = u.balance !== null ? Number(u.balance) : 0;
+                    });
                     console.log("LOG 5: Balances verificados.");
 
                     const potAmount = config.betAmount * config.playersRequired;
@@ -326,13 +329,9 @@ io.on('connection', (socket) => {
                         await connection.commit();
             
                         // 5. Obtenemos el saldo actualizado
-                        const [[winnerData]] = await connection.query('SELECT balance FROM users WHERE id = ?', [winnerId]);
-            
-                        // 6. Emitimos al frontend
-                        io.to(gameId).emit('gameOver', { 
-                            ...newState, 
-                            newBalance: Number(winnerData.balance) || 0 
-                        });
+                        const [rows] = await connection.query('SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?', [winnerId]);
+                        const winnerData = rows[0];
+                        io.to(gameId).emit('gameOver', { ...newState, newBalance: Number(winnerData.balance) });
             
                     } catch (error) {
                         await connection.rollback();
@@ -421,6 +420,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
