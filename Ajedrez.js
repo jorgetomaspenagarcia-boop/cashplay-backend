@@ -7,10 +7,8 @@ class Ajedrez {
         if (playerIds.length !== 2) {
             throw new Error("El ajedrez debe tener exactamente 2 jugadores.");
         }
-
         this.chess = new Chess(); // Creamos una nueva instancia del juego de ajedrez
         this.playerIds = playerIds; // [id_blancas, id_negras]
-
         // Asignamos los colores. El primer jugador en la lista será las blancas.
         this.players = {
             'w': playerIds[0], // Blancas
@@ -30,7 +28,6 @@ class Ajedrez {
         if (playerId !== this.players[playerColor]) {
             throw new Error("No es tu turno.");
         }
-
         try {
             // La librería chess.js valida el movimiento por nosotros.
             // Si el movimiento no es legal, lanzará un error.
@@ -66,3 +63,4 @@ class Ajedrez {
 
 
 module.exports = Ajedrez;
+
