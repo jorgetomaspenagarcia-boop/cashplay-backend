@@ -182,8 +182,17 @@ app.post('/api/update-balance-after-payment', authenticateToken, async (req, res
 app.post("/api/withdraw", authenticateToken, async (req, res) => {
   const { amount, account_info } = req.body;
   const userId = req.user.id;
-  if (!amount || amount <= 0) return res.status(400).json({ message: "Monto inválido" });
-  if (!account_info) return res.status(400).json({ message: "Debe ingresar una cuenta de retiro" });
+  // Validaciones iniciales
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: "Monto inválido" });
+  }
+  // Validación monto mínimo
+  if (amount < 150) {
+    return res.status(400).json({ message: "El retiro mínimo es de $150 MXN" });
+  }
+  if (!account_info) {
+    return res.status(400).json({ message: "Debe ingresar una cuenta de retiro" });
+  }
   try {
     const [rows] = await db.query("SELECT balance FROM users WHERE id = ?", [userId]);
     if (rows.length === 0) return res.status(404).json({ message: "Usuario no encontrado" });
@@ -499,6 +508,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
