@@ -327,8 +327,8 @@ io.on('connection', (socket) => {
             if (newState.winner) {
                 const winnerId = newState.winner;
                 const potAmount = game.potAmount;
-                const prize = potAmount * 0.60;
-                const fee = potAmount * 0.40;
+                const prize = potAmount * 0.70;
+                const fee = potAmount * 0.30;
                 const connection = await db.getConnection();
                 try {
                     await connection.beginTransaction();
@@ -373,8 +373,8 @@ io.on('connection', (socket) => {
                 return;
             }
             const potAmount = game.potAmount;
-            const prize = potAmount * 0.60;
-            const fee = potAmount * 0.40;
+            const prize = potAmount * 0.70;
+            const fee = potAmount * 0.30;
             const connection = await db.getConnection();
             try {
                 await connection.beginTransaction();
@@ -499,6 +499,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
