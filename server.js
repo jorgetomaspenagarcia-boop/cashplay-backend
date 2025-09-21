@@ -189,7 +189,7 @@ app.post("/api/withdraw", authenticateToken, async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ message: "Usuario no encontrado" });
     const balance = rows[0].balance;
     if (balance < amount) return res.status(400).json({ message: "Saldo insuficiente" });
-+   // Ya no descontamos balance aquí
+   // Ya no descontamos balance aquí
     await db.query(
       "INSERT INTO withdrawals (user_id, amount, status, account_info) VALUES (?, ?, ?, ?)",
       [userId, amount, "pending", account_info]
@@ -498,6 +498,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
