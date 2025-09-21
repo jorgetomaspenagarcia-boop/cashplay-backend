@@ -24,8 +24,8 @@ const PORT = process.env.PORT || 3000;
 // --- 3. VARIABLES GLOBALES DEL JUEGO ---
 const activeGames = {};
 const gameConfigs = {
-    snakesAndLadders: { gameClass: SerpientesYEscaleras, playersRequired: 4, betAmount: 1.00 },
-    chess: { gameClass: Ajedrez, playersRequired: 2, betAmount: 5.00 }
+    snakesAndLadders: { gameClass: SerpientesYEscaleras, playersRequired: 4, betAmount: 5.00 },
+    chess: { gameClass: Ajedrez, playersRequired: 2, betAmount: 10.00 }
 };
 let waitingQueues = {
     snakesAndLadders: [],
@@ -499,5 +499,6 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
