@@ -415,21 +415,41 @@ io.on('connection', (socket) => {
     
     socket.on('disconnect', () => {
         console.log(`Desconectado: ${socket.user.email}`);
-        for (const type in waitingQueues) waitingQueues[type] = waitingQueues[type].filter(p => p.id !== socket.id);
+        // Limpia al jugador de todas las colas de espera
+        for (const type in waitingQueues) {
+            waitingQueues[type] = waitingQueues[type].filter(p => p.id !== socket.id);
+        }
         const gameId = socket.currentGameId;
         if (gameId && activeGames[gameId]) {
             const game = activeGames[gameId];
-            if (game.positions) delete game.positions[socket.user.id];
-            io.to(gameId).emit('playerDisconnected', { disconnectedId: socket.user.id, message: `Jugador ${socket.user.email} se desconectó.` });
-            if (game.positions && Object.keys(game.positions).length === 1) delete activeGames[gameId];
+            / Elimina al jugador de la partida
+            if (game.positions) {
+                delete game.positions[socket.user.id];
+            }
+            // Avisamos que alguien se desconectó
+            io.to(gameId).emit('playerDisconnected', {
+                disconnectedId: socket.user.id,
+                message: `Jugador ${socket.user.email} se desconectó.`
+            });
+            // ✅ Si solo queda un jugador → ese jugador es el ganador
+            if (game.positions && Object.keys(game.positions).length === 1) {
+                const winnerId = Object.keys(game.positions)[0];
+    
+                io.to(gameId).emit('gameOver', {
+                    winner: winnerId,
+                    reason: "El oponente abandonó la partida"
+                });
+    
+                delete activeGames[gameId]; // limpiamos la partida
         }
-    });
+    }
 });
 
 // --- 7. INICIAR EL SERVIDOR ---
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
