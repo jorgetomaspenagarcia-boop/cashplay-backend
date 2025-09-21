@@ -167,19 +167,14 @@ app.post('/api/update-balance-after-payment', authenticateToken, async (req, res
 app.post("/api/withdraw", authenticateToken, async (req, res) => {
   const { amount, account_info } = req.body;
   const userId = req.user.id;
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: "Monto inválido" });
-  }
-  if (!account_info) {
-    return res.status(400).json({ message: "Debe ingresar una cuenta de retiro" });
-  }
+  if (!amount || amount <= 0) return res.status(400).json({ message: "Monto inválido" });
+  if (!account_info) return res.status(400).json({ message: "Debe ingresar una cuenta de retiro" });
   try {
     const [rows] = await db.query("SELECT balance FROM users WHERE id = ?", [userId]);
     if (rows.length === 0) return res.status(404).json({ message: "Usuario no encontrado" });
     const balance = rows[0].balance;
     if (balance < amount) return res.status(400).json({ message: "Saldo insuficiente" });
-
-    await db.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, userId]);
++   // Ya no descontamos balance aquí
     await db.query(
       "INSERT INTO withdrawals (user_id, amount, status, account_info) VALUES (?, ?, ?, ?)",
       [userId, amount, "pending", account_info]
@@ -399,6 +394,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
