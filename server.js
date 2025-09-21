@@ -124,6 +124,21 @@ app.get('/api/user/history', authenticateToken, async (req, res) => {
     }
 });
 
+// --- Obtener balance del usuario ---
+app.get('/api/user/balance', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [rows] = await db.query('SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?', [userId]);
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+        res.json({ balance: Number(rows[0].balance) });
+    } catch (error) {
+        console.error('Error al obtener balance:', error);
+        res.status(500).json({ message: 'Error interno del servidor' });
+    }
+});
+
 // Crear payment intent
 app.post('/api/create-payment-intent', authenticateToken, async (req, res) => {
     try {
@@ -394,6 +409,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
