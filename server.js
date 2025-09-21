@@ -314,7 +314,7 @@ io.on('connection', (socket) => {
             })();
         }
     });
-    });
+    
 
     socket.on('lanzarDado', async () => {
         const gameId = socket.currentGameId;
@@ -493,10 +493,11 @@ io.on('connection', (socket) => {
             delete activeGames[gameId];
         }
     });
-
+});
 
 // --- 7. INICIAR EL SERVIDOR ---
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
