@@ -143,7 +143,7 @@ app.get('/api/user/balance', authenticateToken, async (req, res) => {
 app.post('/api/create-payment-intent', authenticateToken, async (req, res) => {
     try {
         const { amount } = req.body;
-        if (!amount || amount <= 0) return res.status(400).json({ error: 'Monto inválido.' });
+        if (!amount || amount <= 100) return res.status(400).json({ error: 'El monto mínimo de depósito es $100 MXN.' });
         const paymentIntent = await stripe.paymentIntents.create({
             amount: Math.round(amount * 100),
             currency: 'mxn',
@@ -499,6 +499,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
