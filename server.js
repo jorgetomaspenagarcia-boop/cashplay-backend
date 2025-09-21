@@ -269,7 +269,6 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
     console.log(`Conectado: ${socket.user.email} (${socket.id})`);
-
     socket.on('findGame', ({ gameType }) => {
         if (!gameConfigs[gameType]) return socket.emit('error', { message: 'Tipo de juego no válido.' });
         const config = gameConfigs[gameType];
@@ -415,33 +414,79 @@ io.on('connection', (socket) => {
     
     socket.on('disconnect', () => {
         console.log(`Desconectado: ${socket.user.email}`);
-        // Limpia al jugador de todas las colas de espera
+         // --- 1. Eliminar al jugador de todas las colas de espera ---
         for (const type in waitingQueues) {
             waitingQueues[type] = waitingQueues[type].filter(p => p.id !== socket.id);
         }
         const gameId = socket.currentGameId;
-        if (gameId && activeGames[gameId]) {
-            const game = activeGames[gameId];
-            // Elimina al jugador de la partida
-            if (game.positions) {
-                delete game.positions[socket.user.id];
-            }
-            // Avisamos que alguien se desconectó
-            io.to(gameId).emit('playerDisconnected', {
-                disconnectedId: socket.user.id,
-                message: `Jugador ${socket.user.email} se desconectó.`
+        if (!gameId || !activeGames[gameId]) return;
+        const game = activeGames[gameId];
+
+    // --- 2. Determinar tipo de juego y estructura de jugadores ---
+    let remainingPlayers = [];
+    if (game instanceof Ajedrez) {
+        // Ajedrez: usamos game.players { w: idBlancas, b: idNegras }
+        remainingPlayers = Object.values(game.players).filter(id => id !== socket.user.id);
+    } else if (game.positions) {
+        // Otros juegos: Serpientes y escaleras u otros que tengan "positions"
+        delete game.positions[socket.user.id];
+        remainingPlayers = Object.keys(game.positions);
+    }
+
+    // --- 3. Avisamos a los demás jugadores ---
+    io.to(gameId).emit('playerDisconnected', {
+        disconnectedId: socket.user.id,
+        message: `Jugador ${socket.user.email} se desconectó.`
+    });
+
+    // --- 4. Si solo queda un jugador, declaramos ganador ---
+    if (remainingPlayers.length === 1) {
+        const winnerId = remainingPlayers[0];
+
+        try {
+            const connection = await db.getConnection();
+            await connection.beginTransaction();
+
+            const potAmount = game.potAmount || 0;
+            const prize = potAmount * 0.75;
+            const fee = potAmount * 0.25;
+
+            // Insertamos la partida en DB y asignamos premio
+            const [gameInsert] = await connection.query(
+                'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
+                [winnerId, potAmount, fee]
+            );
+            await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
+            await connection.query(
+                'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
+                [winnerId, 'win', prize, gameInsert.insertId]
+            );
+
+            await connection.commit();
+
+            // Obtenemos balance actualizado del ganador
+            const [[winnerData]] = await connection.query(
+                'SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?',
+                [winnerId]
+            );
+
+            // Emitimos evento de gameOver
+            io.to(gameId).emit('gameOver', {
+                winner: winnerId,
+                newBalance: Number(winnerData.balance),
+                reason: "El oponente abandonó la partida"
             });
-            // ✅ Si solo queda un jugador → ese jugador es el ganador
-            if (game.positions && Object.keys(game.positions).length === 1) {
-                const winnerId = Object.keys(game.positions)[0];
-    
-                io.to(gameId).emit('gameOver', {
-                    winner: winnerId,
-                    reason: "El oponente abandonó la partida"
-                });
-    
-                delete activeGames[gameId]; // limpiamos la partida
+
+        } catch (error) {
+            console.error('Error al declarar ganador por desconexión:', error);
+            io.to(gameId).emit('gameError', { message: 'Error al finalizar la partida.' });
+        } finally {
+            connection.release();
+            delete activeGames[gameId]; // Limpiamos la partida
         }
+    } else if (remainingPlayers.length === 0) {
+        // Ningún jugador restante, limpiamos la partida
+        delete activeGames[gameId];
     }
 });
 
@@ -449,6 +494,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
