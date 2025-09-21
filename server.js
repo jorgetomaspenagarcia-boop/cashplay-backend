@@ -314,6 +314,7 @@ io.on('connection', (socket) => {
             })();
         }
     });
+    });
 
     socket.on('lanzarDado', async () => {
         const gameId = socket.currentGameId;
@@ -498,22 +499,4 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
