@@ -353,44 +353,65 @@ io.on('connection', (socket) => {
     });
 
    socket.on('makeChessMove', async (move) => {
-        const gameId = socket.currentGameId;
-        if (!gameId || !activeGames[gameId] || !(activeGames[gameId] instanceof Ajedrez)) return socket.emit('errorJuego', { message: 'No estás en una partida de ajedrez válida.' });
-        const game = activeGames[gameId];
-        try {
-            const newState = game.makeMove(socket.user.id, move);
-            io.to(gameId).emit('chessMoveUpdate', newState);
-            if (newState.isGameOver) {
-                const winnerId = newState.isCheckmate ? game.players[newState.turn === 'w' ? 'b' : 'w'] : null;
-                if (!winnerId) {
-                    io.to(gameId).emit('gameOver', { message: 'Empate o abandono.', isDraw: true });
-                    delete activeGames[gameId];
-                    return;
-                }
-                const potAmount = game.potAmount;
-                const prize = potAmount * 0.75;
-                const fee = potAmount * 0.25;
-                const connection = await db.getConnection();
-                try {
-                    await connection.beginTransaction();
-                    const [gameInsert] = await connection.query('INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)', [winnerId, potAmount, fee]);
-                    await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
-                    await connection.query('INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)', [winnerId, 'win', prize, gameInsert.insertId]);
-                    await connection.commit();
-                    const [[winnerData]] = await connection.query('SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?', [winnerId]);
-                    io.to(gameId).emit('gameOver', { ...newState, winner: winnerId, newBalance: Number(winnerData.balance), message: 'Partida de ajedrez finalizada.' });
-                } catch (error) {
-                    await connection.rollback();
-                    console.error('Error fin partida ajedrez:', error);
-                    io.to(gameId).emit('gameError', { message: 'Error al finalizar partida de ajedrez.' });
-                } finally {
-                    connection.release();
-                    delete activeGames[gameId];
-                }
+    const gameId = socket.currentGameId;
+    const game = activeGames[gameId];
+    // Verificar que el jugador esté en una partida válida de ajedrez
+    if (!gameId || !game || !(game instanceof Ajedrez)) {
+        return socket.emit('errorJuego', { message: 'No estás en una partida de ajedrez válida.' });
+    }
+    try {
+        // Intentamos realizar el movimiento usando la clase Ajedrez
+        const newState = game.makeMove(socket.user.id, move);
+        // Emitimos el nuevo estado a todos los jugadores
+        io.to(gameId).emit('chessMoveUpdate', newState);
+        // Si el juego terminó
+        if (newState.isGameOver) {
+            const winnerId = newState.isCheckmate ? game.players[newState.turn === 'w' ? 'b' : 'w'] : null;
+            if (!winnerId) {
+                io.to(gameId).emit('gameOver', { message: 'Empate o abandono.', isDraw: true });
+                delete activeGames[gameId];
+                return;
             }
-        } catch (error) {
-            socket.emit('errorJuego', { message: error.message });
+            const potAmount = game.potAmount;
+            const prize = potAmount * 0.75;
+            const fee = potAmount * 0.25;
+            const connection = await db.getConnection();
+            try {
+                await connection.beginTransaction();
+                const [gameInsert] = await connection.query(
+                    'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
+                    [winnerId, potAmount, fee]
+                );
+                await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
+                await connection.query(
+                    'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
+                    [winnerId, 'win', prize, gameInsert.insertId]
+                );
+                await connection.commit();
+                const [[winnerData]] = await connection.query(
+                    'SELECT COALESCE(balance,0) AS balance FROM users WHERE id = ?',
+                    [winnerId]
+                );
+                io.to(gameId).emit('gameOver', {
+                    ...newState,
+                    winner: winnerId,
+                    newBalance: Number(winnerData.balance),
+                    message: 'Partida de ajedrez finalizada.'
+                });
+            } catch (error) {
+                await connection.rollback();
+                console.error('Error fin partida ajedrez:', error);
+                io.to(gameId).emit('gameError', { message: 'Error al finalizar partida de ajedrez.' });
+            } finally {
+                connection.release();
+                delete activeGames[gameId];
+            }
         }
-    });
+    } catch (error) {
+        // Movimiento ilegal o error de turno
+        socket.emit('illegalMove', { message: error.message });
+    }
+});
     
     socket.on('disconnect', () => {
         console.log(`Desconectado: ${socket.user.email}`);
@@ -409,6 +430,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
