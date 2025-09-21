@@ -422,7 +422,7 @@ io.on('connection', (socket) => {
         const gameId = socket.currentGameId;
         if (gameId && activeGames[gameId]) {
             const game = activeGames[gameId];
-            / Elimina al jugador de la partida
+            // Elimina al jugador de la partida
             if (game.positions) {
                 delete game.positions[socket.user.id];
             }
@@ -449,6 +449,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
