@@ -412,7 +412,7 @@ io.on('connection', (socket) => {
     }
 });
     
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => { 
         console.log(`Desconectado: ${socket.user.email}`);
          // --- 1. Eliminar al jugador de todas las colas de espera ---
         for (const type in waitingQueues) {
@@ -494,6 +494,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
