@@ -289,45 +289,29 @@ io.on('connection', (socket) => {
         const queue = waitingQueues[gameType];
         queue.push(socket);
         queue.forEach(s => s.emit('queueUpdate', { gameType, playersInQueue: queue.length, playersRequired: config.playersRequired }));
-
         if (queue.length >= config.playersRequired) {
             const players = queue.splice(0, config.playersRequired);
-            (async () => {
-                const connection = await db.getConnection();
-                try {
-                    await connection.beginTransaction();
-                    const playerIds = players.map(p => p.user.id);
-                    const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
-                    if (users.some(u => Number(u.balance) < config.betAmount)) {
-                        players.forEach(s => s.emit('gameCancelled', { message: 'Saldo insuficiente.' }));
-                        waitingQueues[gameType].unshift(...players);
-                        await connection.rollback();
-                        return;
-                    }
-                    const potAmount = config.betAmount * config.playersRequired;
-                    for (const user of users) {
-                        await connection.query('UPDATE users SET balance = balance - ? WHERE id = ?', [config.betAmount, user.id]);
-                        await connection.query('INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)', [user.id, 'bet', -config.betAmount]);
-                    }
-                    await connection.commit();
-
-                    const GameClass = config.gameClass;
-                    const gameId = `${playerIds[0]}-${Date.now()}`;
-                    const game = new GameClass(playerIds);
-                    game.potAmount = potAmount;
-                    activeGames[gameId] = game;
-                    players.forEach(p => { p.join(gameId); p.currentGameId = gameId; });
-                    io.to(gameId).emit('gameStart', game.getGameState());
-                } catch (error) {
-                    await connection.rollback();
-                    console.error('Error inicio partida:', error);
-                    waitingQueues[gameType].unshift(...players);
-                } finally {
-                    connection.release();
-                }
-            })();
+            const playerIds = players.map(p => p.user.id);
+            const gameId = `game-${Date.now()}`; // ID único
+            const GameClass = config.gameClass;
+            const gameInstance = new GameClass(playerIds); // crea instancia TicTacToe o el juego correspondiente
+            activeGames[gameId] = {
+                id: gameId,
+                gameType,
+                instance: gameInstance,
+                players: playerIds
+            };
+            // Notificamos a todos los jugadores que el juego inicia
+            players.forEach(s => {
+                s.emit('gameStart', {
+                    gameType,
+                    board: gameInstance.board,
+                    playerIds,
+                    currentPlayer: gameInstance.currentPlayer
+                });
+            });
         }
-    });
+
     
 
     socket.on('lanzarDado', async () => {
@@ -427,62 +411,23 @@ io.on('connection', (socket) => {
     }
 });
 
-    socket.on('makeTicTacToeMove', async (move) => {
-    const gameId = socket.currentGameId;
-    const game = activeGames[gameId];
-
-    if (!gameId || !game || !(game instanceof TicTacToe)) {
-        return socket.emit('errorJuego', { message: 'No estás en una partida de TicTacToe válida.' });
-    }
-
-    try {
-        const newState = game.makeMove(socket.user.id, move);
-        io.to(gameId).emit('ticTacToeMoveUpdate', newState);
-
-        // Si hay ganador o empate
-        if (newState.isGameOver) {
-            const winnerId = newState.winner;
-            const potAmount = game.potAmount;
-            const prize = winnerId ? potAmount * 0.70 : 0;
-            const fee = winnerId ? potAmount * 0.30 : potAmount;
-
-            const connection = await db.getConnection();
-            try {
-                await connection.beginTransaction();
-
-                const [gameInsert] = await connection.query(
-                    'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
-                    [winnerId || null, potAmount, fee]
-                );
-
-                if (winnerId) {
-                    await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
-                    await connection.query(
-                        'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
-                        [winnerId, 'win', prize, gameInsert.insertId]
-                    );
-                }
-
-                await connection.commit();
-
-                io.to(gameId).emit('gameOver', {
-                    ...newState,
-                    winner: winnerId,
-                    message: winnerId ? 'Ganador del gato 🎉' : 'Empate en TicTacToe 🤝'
-                });
-            } catch (error) {
-                await connection.rollback();
-                console.error('Error fin partida TicTacToe:', error);
-                io.to(gameId).emit('gameError', { message: 'Error al finalizar partida de TicTacToe.' });
-            } finally {
-                connection.release();
-                delete activeGames[gameId];
-            }
+    socket.on('makeTicTacToeMove', ({ index, playerId }) => {
+    const game = Object.values(activeGames).find(g => g.players.includes(playerId) && g.gameType === 'tictactoe');
+    if (!game) return;
+    const result = game.instance.makeMove(playerId, index); // método que actualiza estado
+    // Emitimos actualización a todos los jugadores
+    game.players.forEach(pId => {
+        const playerSocket = Array.from(io.sockets.sockets.values()).find(s => s.user.id === pId);
+        if (playerSocket) {
+            playerSocket.emit('ticTacToeUpdate', {
+                board: game.instance.board,
+                currentPlayer: game.instance.currentPlayer,
+                winner: game.instance.winner
+            });
         }
-    } catch (error) {
-        socket.emit('illegalMove', { message: error.message });
-    }
+    });
 });
+
     
     socket.on('disconnect', async () => { 
         console.log(`Desconectado: ${socket.user.email}`);
@@ -570,6 +515,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
