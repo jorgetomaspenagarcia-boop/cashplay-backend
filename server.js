@@ -418,22 +418,27 @@ io.on('connection', (socket) => {
     }
 });
 
-    socket.on('makeTicTacToeMove', ({ index, playerId }) => {
-    const game = Object.values(activeGames).find(g => g.players.includes(playerId) && g.gameType === 'tictactoe');
-    if (!game) return;
-    const result = game.instance.makeMove(playerId, index); // método que actualiza estado
-    // Emitimos actualización a todos los jugadores
-    game.players.forEach(pId => {
-        const playerSocket = Array.from(io.sockets.sockets.values()).find(s => s.user.id === pId);
-        if (playerSocket) {
-            playerSocket.emit('ticTacToeUpdate', {
-                board: game.instance.board,
-                currentPlayer: game.instance.currentPlayer,
-                winner: game.instance.winner
+    socket.on('makeTicTacToeMove', ({ index }) => {
+        const game = Object.values(activeGames).find(g => g.players.includes(socket.user.id) && g.gameType === 'tictactoe');
+        if (!game) return;
+    
+        try {
+            const result = game.instance.makeMove(socket.user.id, index); // ✅ usamos el ID seguro del socket
+            // Emitir actualización a todos los jugadores
+            game.players.forEach(pId => {
+                const playerSocket = Array.from(io.sockets.sockets.values()).find(s => s.user.id === pId);
+                if (playerSocket) {
+                    playerSocket.emit('ticTacToeUpdate', {
+                        board: game.instance.board,
+                        currentPlayer: game.instance.currentPlayer,
+                        winner: game.instance.winner
+                    });
+                }
             });
+        } catch (err) {
+            socket.emit('illegalMove', { message: err.message });
         }
     });
-});
 
     
     socket.on('disconnect', async () => { 
@@ -522,6 +527,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
