@@ -8,11 +8,15 @@ class TicTacToe {
         this.winner = null;
     }
 
+    get currentPlayer() {
+        return this.players[this.turn];
+    }
+
   getGameState() {
         return {
             players: this.players,
             board: this.board,
-            turn: this.turn,
+            currentPlayer: this.currentPlayer,
             isGameOver: this.isGameOver,
             winner: this.winner
         };
@@ -20,14 +24,12 @@ class TicTacToe {
 
    makeMove(playerId, position) {
         if (this.isGameOver) throw new Error('Partida finalizada');
-        if (this.players[this.turn] !== playerId) throw new Error('No es tu turno');
+        if (this.currentPlayer !== playerId) throw new Error('No es tu turno');
         if (this.board[position] !== null) throw new Error('Posición ocupada');
 
         this.board[position] = playerId; 
-        // cambiar turno
         this.turn = 1 - this.turn;
 
-        // verificar ganador
         const lines = [
             [0,1,2],[3,4,5],[6,7,8],
             [0,3,6],[1,4,7],[2,5,8],
@@ -40,7 +42,6 @@ class TicTacToe {
             }
         }
 
-        // empate
         if (!this.board.includes(null) && !this.winner) {
             this.isGameOver = true;
         }
