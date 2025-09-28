@@ -298,7 +298,7 @@ io.on('connection', (socket) => {
                     await connection.beginTransaction();
                     const playerIds = players.map(p => p.user.id);
                     const [users] = await connection.query('SELECT id, balance FROM users WHERE id IN (?)', [playerIds]);
-                    if (users.some(u => u.balance < config.betAmount)) {
+                    if (users.some(u => Number(u.balance) < config.betAmount)) {
                         players.forEach(s => s.emit('gameCancelled', { message: 'Saldo insuficiente.' }));
                         waitingQueues[gameType].unshift(...players);
                         await connection.rollback();
@@ -570,6 +570,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
