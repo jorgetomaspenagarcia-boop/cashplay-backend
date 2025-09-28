@@ -287,29 +287,37 @@ io.on('connection', (socket) => {
         if (!gameConfigs[gameType]) return socket.emit('error', { message: 'Tipo de juego no válido.' });
         const config = gameConfigs[gameType];
         const queue = waitingQueues[gameType];
+        / Evitar duplicados por usuario ID
+        if (!queue.some(s => s.user.id === socket.user.id)) {
+            queue.push(socket);
+        }
         queue.push(socket);
         queue.forEach(s => s.emit('queueUpdate', { gameType, playersInQueue: queue.length, playersRequired: config.playersRequired }));
         if (queue.length >= config.playersRequired) {
-            const players = queue.splice(0, config.playersRequired);
-            const playerIds = players.map(p => p.user.id);
-            const gameId = `game-${Date.now()}`; // ID único
-            const GameClass = config.gameClass;
-            const gameInstance = new GameClass(playerIds); // crea instancia TicTacToe o el juego correspondiente
-            activeGames[gameId] = {
-                id: gameId,
-                gameType,
-                instance: gameInstance,
-                players: playerIds
-            };
-            // Notificamos a todos los jugadores que el juego inicia
-            players.forEach(s => {
-                s.emit('gameStart', {
+                const players = queue.splice(0, config.playersRequired);
+                const playerIds = players.map(p => p.user.id);
+                const gameId = `game-${Date.now()}`;
+                const GameClass = config.gameClass;
+                const gameInstance = new GameClass(playerIds);
+                activeGames[gameId] = {
+                    id: gameId,
                     gameType,
-                    board: gameInstance.board,
-                    playerIds,
-                    currentPlayer: gameInstance.currentPlayer
+                    instance: gameInstance,
+                    players: playerIds
+                };
+        
+                // Guardar a qué juego pertenece el socket
+                players.forEach(s => {
+                    s.currentGameId = gameId;
+                    s.emit('gameStart', {
+                        gameType,
+                        board: gameInstance.board,
+                        playerIds,
+                        currentPlayer: gameInstance.currentPlayer
+                    });
                 });
-            });
+            }
+        });
         }
 
     
@@ -515,6 +523,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
