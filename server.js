@@ -287,11 +287,10 @@ io.on('connection', (socket) => {
         if (!gameConfigs[gameType]) return socket.emit('error', { message: 'Tipo de juego no válido.' });
         const config = gameConfigs[gameType];
         const queue = waitingQueues[gameType];
-        / Evitar duplicados por usuario ID
+        // Evitar duplicados por usuario ID
         if (!queue.some(s => s.user.id === socket.user.id)) {
             queue.push(socket);
         }
-        queue.push(socket);
         queue.forEach(s => s.emit('queueUpdate', { gameType, playersInQueue: queue.length, playersRequired: config.playersRequired }));
         if (queue.length >= config.playersRequired) {
                 const players = queue.splice(0, config.playersRequired);
@@ -305,9 +304,9 @@ io.on('connection', (socket) => {
                     instance: gameInstance,
                     players: playerIds
                 };
-        
                 // Guardar a qué juego pertenece el socket
                 players.forEach(s => {
+                    s.join(gameId);
                     s.currentGameId = gameId;
                     s.emit('gameStart', {
                         gameType,
@@ -442,7 +441,7 @@ io.on('connection', (socket) => {
         
         // --- 1. Eliminar al jugador de todas las colas de espera ---
         for (const type in waitingQueues) {
-            waitingQueues[type] = waitingQueues[type].filter(p => p.id !== socket.id);
+            waitingQueues[type] = waitingQueues[type].filter(p => p.user.id !== socket.user.id);
         }
     
         const gameId = socket.currentGameId;
@@ -523,6 +522,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
