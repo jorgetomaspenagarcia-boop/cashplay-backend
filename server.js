@@ -9,6 +9,7 @@ const db = require('./db.js');
 const SerpientesYEscaleras = require('./SerpientesYEscaleras.js');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Ajedrez = require('./Ajedrez.js'); // <-- NUEVA IMPORTACIÓN
+const TicTacToe = require('./TicTacToe.js');
 
 // --- 2. CONFIGURACIÓN INICIAL DE EXPRESS Y SOCKET.IO ---
 const app = express();
@@ -25,12 +26,16 @@ const PORT = process.env.PORT || 3000;
 const activeGames = {};
 const gameConfigs = {
     snakesAndLadders: { gameClass: SerpientesYEscaleras, playersRequired: 4, betAmount: 5.00 },
-    chess: { gameClass: Ajedrez, playersRequired: 2, betAmount: 10.00 }
+    chess: { gameClass: Ajedrez, playersRequired: 2, betAmount: 10.00 },
+    tictactoe: { gameClass: TicTacToe, playersRequired: 2, betAmount: 5.00 }
 };
+
 let waitingQueues = {
     snakesAndLadders: [],
-    chess: []
+    chess: [],
+    tictactoe: []
 };
+
 
 // --- 4. MIDDLEWARE DE AUTENTICACIÓN PARA LA API ---
 function authenticateToken(req, res, next) {
@@ -421,6 +426,63 @@ io.on('connection', (socket) => {
         socket.emit('illegalMove', { message: error.message });
     }
 });
+
+    socket.on('makeTicTacToeMove', async (move) => {
+    const gameId = socket.currentGameId;
+    const game = activeGames[gameId];
+
+    if (!gameId || !game || !(game instanceof TicTacToe)) {
+        return socket.emit('errorJuego', { message: 'No estás en una partida de TicTacToe válida.' });
+    }
+
+    try {
+        const newState = game.makeMove(socket.user.id, move);
+        io.to(gameId).emit('ticTacToeMoveUpdate', newState);
+
+        // Si hay ganador o empate
+        if (newState.isGameOver) {
+            const winnerId = newState.winner;
+            const potAmount = game.potAmount;
+            const prize = winnerId ? potAmount * 0.70 : 0;
+            const fee = winnerId ? potAmount * 0.30 : potAmount;
+
+            const connection = await db.getConnection();
+            try {
+                await connection.beginTransaction();
+
+                const [gameInsert] = await connection.query(
+                    'INSERT INTO games (winner_id, pot_amount, app_fee) VALUES (?, ?, ?)',
+                    [winnerId || null, potAmount, fee]
+                );
+
+                if (winnerId) {
+                    await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [prize, winnerId]);
+                    await connection.query(
+                        'INSERT INTO transactions (user_id, type, amount, game_id) VALUES (?, ?, ?, ?)',
+                        [winnerId, 'win', prize, gameInsert.insertId]
+                    );
+                }
+
+                await connection.commit();
+
+                io.to(gameId).emit('gameOver', {
+                    ...newState,
+                    winner: winnerId,
+                    message: winnerId ? 'Ganador del gato 🎉' : 'Empate en TicTacToe 🤝'
+                });
+            } catch (error) {
+                await connection.rollback();
+                console.error('Error fin partida TicTacToe:', error);
+                io.to(gameId).emit('gameError', { message: 'Error al finalizar partida de TicTacToe.' });
+            } finally {
+                connection.release();
+                delete activeGames[gameId];
+            }
+        }
+    } catch (error) {
+        socket.emit('illegalMove', { message: error.message });
+    }
+});
     
     socket.on('disconnect', async () => { 
         console.log(`Desconectado: ${socket.user.email}`);
@@ -508,6 +570,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Servidor escuchando en el puerto *:${PORT}`);
 });
+
 
 
 
