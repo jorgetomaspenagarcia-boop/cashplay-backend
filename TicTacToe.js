@@ -23,31 +23,38 @@ class TicTacToe {
     }
 
    makeMove(playerId, position) {
-        if (this.isGameOver) throw new Error('Partida finalizada');
-        if (this.currentPlayer !== playerId) throw new Error('No es tu turno');
-        if (this.board[position] !== null) throw new Error('Posición ocupada');
+    if (this.isGameOver) throw new Error('Partida finalizada');
 
-        this.board[position] = playerId; 
-        this.turn = 1 - this.turn;
+    const currentPlayerId = this.players[this.turn];
+    if (playerId !== currentPlayerId) throw new Error('No es tu turno');
 
-        const lines = [
-            [0,1,2],[3,4,5],[6,7,8],
-            [0,3,6],[1,4,7],[2,5,8],
-            [0,4,8],[2,4,6]
-        ];
-        for (const [a,b,c] of lines) {
-            if (this.board[a] && this.board[a] === this.board[b] && this.board[a] === this.board[c]) {
-                this.isGameOver = true;
-                this.winner = playerId;
-            }
-        }
+    if (this.board[position] !== null) throw new Error('Posición ocupada');
 
-        if (!this.board.includes(null) && !this.winner) {
+    this.board[position] = playerId;
+
+    // Cambiar turno
+    this.turn = (this.turn + 1) % this.players.length;
+
+    // Verificar ganador
+    const lines = [
+        [0,1,2],[3,4,5],[6,7,8],
+        [0,3,6],[1,4,7],[2,5,8],
+        [0,4,8],[2,4,6]
+    ];
+    for (const [a,b,c] of lines) {
+        if (this.board[a] && this.board[a] === this.board[b] && this.board[a] === this.board[c]) {
             this.isGameOver = true;
+            this.winner = playerId;
         }
-
-        return this.getGameState();
     }
+
+    // Empate
+    if (!this.board.includes(null) && !this.winner) {
+        this.isGameOver = true;
+    }
+
+    return this.getGameState();
+}
 }
 
 module.exports = TicTacToe;
